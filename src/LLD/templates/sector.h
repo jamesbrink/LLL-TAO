@@ -222,7 +222,8 @@ namespace LLD
             std::vector<unsigned char> vKey(ssKey.begin(), ssKey.end());
             
             /** Return the Key existance in the Keychain Database. **/
-            return SectorKeys->HasKey(vKey);
+            unsigned int nBucket = 0, nIterator = 0;
+            return SectorKeys->Find(vKey, nBucket, nIterator);
         }
         
         template<typename Key>
@@ -314,7 +315,8 @@ namespace LLD
             if(cachePool->Get(vKey, vData))
                 return true;
             
-            if(SectorKeys->HasKey(vKey))
+            unsigned int nBucket = 0, nIterator = 0;
+            if(SectorKeys->Find(vKey, nBucket, nIterator))
             {	
                 /* Check that the key is not pending in a transaction for Erase. */
                 if(pTransaction && pTransaction->mapEraseData.count(vKey))
@@ -333,7 +335,7 @@ namespace LLD
                 
                 /** Read the Sector Key from Keychain. **/
                 SectorKey cKey;
-                if(!SectorKeys->Get(vKey, cKey))
+                if(!SectorKeys->Get(vKey, cKey, nBucket, nIterator))
                     return false;
                 
                 /** Open the Stream to Read the data from Sector on File. **/
@@ -384,7 +386,8 @@ namespace LLD
                 runtime.Start();
             
             /* Write Header if First Update. */
-            if(!SectorKeys->HasKey(vKey))
+            unsigned int nIterator = 0, nBucket = 0;
+            if(!SectorKeys->Find(vKey, nBucket, nIterator))
             {
                 if(nCurrentFileSize > MAX_SECTOR_FILE_SIZE)
                 {
@@ -418,13 +421,13 @@ namespace LLD
                 nCurrentFileSize += vData.size();
                 
                 /* Assign the Key to Keychain. */
-                SectorKeys->Put(cKey);
+                SectorKeys->Put(cKey, nBucket, nIterator);
             }
             else
             {
                 /* Get the Sector Key from the Keychain. */
                 SectorKey cKey;
-                if(!SectorKeys->Get(vKey, cKey))
+                if(!SectorKeys->Get(vKey, cKey, nBucket, nIterator))
                     return false;
                     
                 /* Open the Stream to Read the data from Sector on File. */
@@ -450,7 +453,7 @@ namespace LLD
                 cKey.nState    = READY;
                 cKey.nChecksum = LLC::HASH::SK32(vData);
                 
-                SectorKeys->Put(cKey);
+                SectorKeys->Put(cKey, nBucket, nIterator);
             }
             
             if(GetArg("-verbose", 0) >= 4)
@@ -513,7 +516,8 @@ namespace LLD
                 {
                         
                     /* Setup for batch write on first update. */
-                    if(!SectorKeys->HasKey(vObj.first))
+                    unsigned int nIterator = 0, nBucket = 0;
+                    if(!SectorKeys->Find(vObj.first, nBucket, nIterator))
                     {
                         /* Create a new Sector Key. */
                         SectorKey cKey(READY, vObj.first, nCurrentFile, nTempFileSize, vObj.second.size()); 
@@ -525,7 +529,7 @@ namespace LLD
                         nTempFileSize += vObj.second.size();
                         
                         /* Assign the Key to Keychain. */
-                        SectorKeys->Put(cKey);
+                        SectorKeys->Put(cKey, nBucket, nIterator);
                         
                         /* Setup the Batch data write. */
                         vBatch.insert(vBatch.end(), vObj.second.begin(), vObj.second.end());
@@ -534,7 +538,7 @@ namespace LLD
                     {
                         /* Get the Sector Key from the Keychain. */
                         SectorKey cKey;
-                        if(!SectorKeys->Get(vObj.first, cKey))
+                        if(!SectorKeys->Get(vObj.first, cKey, nBucket, nIterator))
                             break;
                             
                         /* Open the Stream to Read the data from Sector on File. */
@@ -558,7 +562,7 @@ namespace LLD
                         /* Update the Keychain. */
                         cKey.nState    = READY;
                         cKey.nChecksum = LLC::HASH::SK32(vObj.second);
-                        SectorKeys->Put(cKey);
+                        SectorKeys->Put(cKey, nBucket, nIterator);
                         
                         /* Update the Cache Pool. */
                         //cachePool.SetState(vObj.first, MEMORY_ONLY);
@@ -648,158 +652,7 @@ namespace LLD
         {
             LOCK(SECTOR_MUTEX);
             
-            if(GetBoolArg("-runtime", false))
-                runtime.Start();
-            
-            if(GetArg("-verbose", 0) >= 4)
-                printf("TransactionCommit() : Commiting Transactin to Datachain.\n");
-            
-            /** Check that there is a valid transaction to apply to the database. **/
-            if(!pTransaction)
-                return error("TransactionCommit() : No Transaction data to Commit.");
-            
-            /** Habdle setting the sector key flags so the database knows if the transaction was completed properly. **/
-            if(GetArg("-verbose", 0) >= 4)
-                printf("TransactionCommit() : Commiting Keys to Keychain.\n");
-            
-            /** Set the Sector Keys to an Invalid State to know if there are interuptions the sector was not finished successfully. **/
-            for(typename std::map< std::vector<unsigned char>, std::vector<unsigned char> >::iterator nIterator = pTransaction->mapTransactions.begin(); nIterator != pTransaction->mapTransactions.end(); nIterator++ )
-            {
-                SectorKey cKey;
-                if(SectorKeys->HasKey(nIterator->first)) {
-                    if(!SectorKeys->Get(nIterator->first, cKey))
-                        return error("CommitTransaction() : Couldn't get the Active Sector Key.");
-                    
-                    cKey.nState = TRANSACTION;
-                    SectorKeys->Put(cKey);
-                }
-            }
-            
-            /** Update the Keychain with Checksums and READY Flag letting sectors know they were written successfully. **/
-            if(GetArg("-verbose", 0) >= 4)
-                printf("TransactionCommit() : Erasing Sector Keys Flagged for Deletingn.\n");
-            
-            /** Erase all the Transactions that are set to be erased. That way if they are assigned a TRANSACTION flag we know to roll back their key to orginal data. **/
-            for(typename std::map< std::vector<unsigned char>, unsigned int >::iterator nIterator = pTransaction->mapEraseData.begin(); nIterator != pTransaction->mapEraseData.end(); nIterator++ )
-            {
-                if(!SectorKeys->Erase(nIterator->first))
-                    return error("CommitTransaction() : Couldn't get the Active Sector Key for Delete.");
-            }
-            
-            /** Commit the Sector Data to the Database. **/
-            if(GetArg("-verbose", 0) >= 4)
-                printf("TransactionCommit() : Commit Data to Datachain Sector Database.\n");
-            
-            for(typename std::map< std::vector<unsigned char>, std::vector<unsigned char> >::iterator nIterator = pTransaction->mapTransactions.begin(); nIterator != pTransaction->mapTransactions.end(); nIterator++ )
-            {
-                /** Declare the Key and Data for easier reference. **/
-                std::vector<unsigned char> vKey  = nIterator->first;
-                std::vector<unsigned char> vData = nIterator->second;
-                
-                /* Write Header if First Update. */
-                if(!SectorKeys->HasKey(vKey))
-                {
-                    if(nCurrentFileSize > MAX_SECTOR_FILE_SIZE)
-                    {
-                        if(GetArg("-verbose", 0) >= 4)
-                            printf("SECTOR::Put(): Current File too Large, allocating new File %u\n", nCurrentFileSize, nCurrentFile + 1);
-                            
-                        nCurrentFile ++;
-                        nCurrentFileSize = 0;
-                        
-                        std::ofstream fStream(strprintf("%s-%u.dat", strLocation.c_str(), nCurrentFile).c_str(), std::ios::out | std::ios::binary);
-                        fStream.close();
-                    }
-                    
-                    /* Open the Stream to Read the data from Sector on File. */
-                    std::string strFilename = strprintf("%s-%u.dat", strLocation.c_str(), nCurrentFile);
-                    std::fstream fStream(strFilename.c_str(), std::ios::in | std::ios::out | std::ios::binary);
-                    
-                    /* If it is a New Sector, Assign a Binary Position. 
-                        TODO: Track Sector Database File Sizes. */
-                    fStream.seekp(nCurrentFileSize, std::ios::beg);
-                    
-                    fStream.write((char*) &vData[0], vData.size());
-                    fStream.close();
-                    
-                    /* Create a new Sector Key. */
-                    SectorKey cKey(READY, vKey, nCurrentFile, nCurrentFileSize, vData.size()); 
-                    
-                    /* Check the Data Integrity of the Sector by comparing the Checksums. */
-                    cKey.nChecksum    = LLC::HASH::SK32(vData);
-                    
-                    /* Increment the current filesize */
-                    nCurrentFileSize += vData.size();
-                    
-                    /* Assign the Key to Keychain. */
-                    SectorKeys->Put(cKey);
-                }
-                else
-                {
-                    /* Get the Sector Key from the Keychain. */
-                    SectorKey cKey;
-                    if(!SectorKeys->Get(vKey, cKey)) {
-                        SectorKeys->Erase(vKey);
-                        
-                        return false;
-                    }
-                        
-                    /* Open the Stream to Read the data from Sector on File. */
-                    std::string strFilename = strprintf("%s-%u.dat", strLocation.c_str(), cKey.nSectorFile);
-                    std::fstream fStream(strFilename.c_str(), std::ios::in | std::ios::out | std::ios::binary);
-                    
-                    /* Locate the Sector Data from Sector Key. 
-                        TODO: Make Paging more Efficient in Keys by breaking data into different locations in Database. */
-                    fStream.seekp(cKey.nSectorStart, std::ios::beg);
-                    if(vData.size() > cKey.nSectorSize){
-                        fStream.close();
-                        printf("ERROR PUT (TOO LARGE) NO TRUNCATING ALLOWED (Old %u :: New %u):%s\n", cKey.nSectorSize, vData.size(), HexStr(vData.begin(), vData.end()).c_str());
-                        
-                        return false;
-                    }
-                    
-                    /* Assign the Writing State for Sector. */
-                    //TODO: use memory maps
-                    
-                    fStream.write((char*) &vData[0], vData.size());
-                    fStream.close();
-                    
-                    cKey.nState    = READY;
-                    cKey.nChecksum = LLC::HASH::SK32(vData);
-                    
-                    SectorKeys->Put(cKey);
-                }
-            }
-            
-            /** Update the Keychain with Checksums and READY Flag letting sectors know they were written successfully. **/
-            if(GetArg("-verbose", 0) >= 4)
-                printf("TransactionCommit() : Commiting Key Valid States to Keychain.\n");
-            
-            for(typename std::map< std::vector<unsigned char>, std::vector<unsigned char> >::iterator nIterator = pTransaction->mapTransactions.begin(); nIterator != pTransaction->mapTransactions.end(); nIterator++ )
-            {
-                /** Assign the Writing State for Sector. **/
-                SectorKey cKey;
-                if(!SectorKeys->Get(nIterator->first, cKey))
-                    return error("CommitTransaction() : Failed to Get Key from Keychain.");
-                
-                /** Set the Sector states back to Active. **/
-                cKey.nState    = READY;
-                cKey.nChecksum = LLC::HASH::SK32(nIterator->second);
-                
-                /** Commit the Keys to Keychain Database. **/
-                if(!SectorKeys->Put(cKey))
-                    return error("CommitTransaction() : Failed to Commit Key to Keychain.");
-            }
-            
-            /** Clean up the Sector Transaction Key. 
-                TODO: Delete the Sector and Keychain for Current Transaction Commit ID. **/
-            delete pTransaction;
-            pTransaction = NULL;
-            
-            if(GetBoolArg("-runtime", false))
-                printf(ANSI_COLOR_GREEN "LLD::Sector::TxnCommit() executed in %u micro-seconds\n" ANSI_COLOR_RESET, runtime.ElapsedMicroseconds());
-            
-            return true;
+
         }
     };
 }

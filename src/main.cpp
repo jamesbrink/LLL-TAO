@@ -17,6 +17,8 @@
 
 #include <db_cxx.h>
 
+#include <nudb/nudb.hpp>
+
 class CBlock
 {
 public:
@@ -95,6 +97,7 @@ public:
     }
 };
 
+
 int main(int argc, char** argv)
 {
     ParseParameters(argc, argv);
@@ -119,7 +122,7 @@ int main(int argc, char** argv)
         vBlocks.push_back(bulkTest.GetHash());
     }
     
-    printf(ANSI_COLOR_BRIGHT_BLUE "\nWriting %u Keys to Nexus LLD, Google LevelDB, and Oracle BerkeleyDB\n\n" ANSI_COLOR_RESET, nTotalRecords);
+    printf(ANSI_COLOR_BRIGHT_BLUE "\nWriting %u Keys to Nexus LLD, Ripple NuDB, Google LevelDB, and Oracle BerkeleyDB\n\n" ANSI_COLOR_RESET, nTotalRecords);
     
     unsigned int nTotalElapsed = 0;
     Timer timer;
@@ -154,6 +157,75 @@ int main(int argc, char** argv)
     
     printf(ANSI_COLOR_YELLOW "LLD Total Running Time: %f seconds | %f ops/s\n\n" ANSI_COLOR_RESET, nTotalElapsed / 1000000.0, (nTotalRecords * 1000000.0) / nTotalElapsed);
     nTotalElapsed = 0;
+	
+	using namespace nudb;
+    using key_type = uint1024;
+    error_code ec;
+    auto const dat_path = GetDataDir().string() + "/nudb/db.dat";
+    auto const key_path = GetDataDir().string() + "/nudb/db.key";
+    auto const log_path = GetDataDir().string() + "/nudb/db.log";
+	/*
+    create<xxhasher>(
+        dat_path, key_path, log_path,
+        1,
+        make_salt(),
+        sizeof(key_type),
+        block_size("."),
+        0.5f,
+        ec);
+        */
+    store ndb;
+    ndb.open(dat_path, key_path, log_path, ec);
+
+	
+    timer.Reset();
+    for(typename std::map< uint1024, CBlock >::iterator blk = mapBlocks.begin(); blk != mapBlocks.end(); blk++ )
+    {
+        CDataStream ssKey(SER_LLD, DATABASE_VERSION);
+        ssKey << blk->first;
+        
+        std::vector<char> vKey(ssKey.begin(), ssKey.end());
+        
+        CDataStream ssData(SER_LLD, DATABASE_VERSION);
+        ssData << blk->second;
+        
+        std::vector<char> vData(ssData.begin(), ssData.end());
+        
+        ndb.insert(&blk->first, &vData[0], vData.size(), ec);
+    }
+    
+    nElapsed = timer.ElapsedMicroseconds();
+    printf(ANSI_COLOR_GREEN "NuDB Write Performance: %u micro-seconds | %f ops/s\n" ANSI_COLOR_RESET, nElapsed, (nTotalRecords * 1000000.0) / nElapsed);
+    nTotalElapsed += nElapsed;
+    
+    
+    timer.Reset();
+    std::random_shuffle(vBlocks.begin(), vBlocks.end());
+    for(auto hash : vBlocks)
+    {
+		ndb.fetch(&hash,
+            [&](void const* buffer, std::size_t size)
+        {
+            // do something with buffer, size
+        }, ec);
+	}
+
+    
+    nElapsed = timer.ElapsedMicroseconds();
+    printf(ANSI_COLOR_GREEN "NuDB Read Performance: %u micro-seconds | %f ops/s\n" ANSI_COLOR_RESET, nElapsed, (nTotalRecords * 1000000.0) / nElapsed);
+    nTotalElapsed += nElapsed;
+    
+    timer.Reset();
+	ndb.close(ec);
+    nElapsed = timer.ElapsedMicroseconds();
+    printf(ANSI_COLOR_GREEN "NuDB Destruct Performance: %u micro-seconds\n" ANSI_COLOR_RESET, nElapsed);
+    nTotalElapsed += nElapsed;
+    
+    
+    printf(ANSI_COLOR_YELLOW "NuDB Total Running Time: %f seconds | %f ops/s\n\n" ANSI_COLOR_RESET, nTotalElapsed / 1000000.0, (nTotalRecords * 1000000.0) / nTotalElapsed);
+    nTotalElapsed = 0;
+	
+	
     
     
     // Set up database connection information and open database
@@ -166,7 +238,7 @@ int main(int argc, char** argv)
 
     if (false == status.ok())
     {
-        return error("Unable to Open Leveldb\n");
+        //return error("Unable to Open Leveldb\n");
     }
     
     // Add 256 values to the database
@@ -194,8 +266,6 @@ int main(int argc, char** argv)
     nElapsed = timer.ElapsedMicroseconds();
     printf(ANSI_COLOR_GREEN "LevelDB Write Performance: %u micro-seconds | %f ops/s\n" ANSI_COLOR_RESET, nElapsed, (nTotalRecords * 1000000.0) / nElapsed);
     nTotalElapsed += nElapsed;
-    
-    Sleep(2000);
     
     
     timer.Reset();
