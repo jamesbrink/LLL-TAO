@@ -208,7 +208,7 @@ namespace LLD
         
         
         /** Return Whether a Key Exists in the Database. **/
-        bool Find(const std::vector<unsigned char>& vKey, unsigned int& nBucket, unsigned int& nIterator) 
+        bool Find(const std::vector<unsigned char> vKey, unsigned int& nBucket, unsigned int& nIterator) 
         { 
             /* Write Header if First Update. */
             nBucket = GetBucket(vKey);
@@ -228,8 +228,8 @@ namespace LLD
                 std::string strFilename = strprintf("%s-%u.keys", strLocation.c_str(), nBucket);
                 std::fstream fIncoming(strFilename.c_str(), std::ios::in | std::ios::out | std::ios::binary);
             
-                fIncoming.seekg (0, std::ios::end);
-                unsigned int nCurrentFileSize = fIncoming.tellg();
+                fIncoming.ignore(std::numeric_limits<std::streamsize>::max());
+                unsigned int nCurrentFileSize = fIncoming.gcount();
                 
                 fIncoming.seekg (0, std::ios::beg);
                 std::vector<unsigned char> vKeychain(nCurrentFileSize, 0);
@@ -242,12 +242,12 @@ namespace LLD
                 {
                             
                     /* Get Binary Data */
-                    std::vector<unsigned char> vKey(vKeychain.begin() + nIterator, vKeychain.begin() + nIterator + 15);
+                    std::vector<unsigned char> vData(vKeychain.begin() + nIterator, vKeychain.begin() + nIterator + 15);
                             
                             
                     /* Read the State and Size of Sector Header. */
                     SectorKey cKey;
-                    CDataStream ssKey(vKey, SER_LLD, DATABASE_VERSION);
+                    CDataStream ssKey(vData, SER_LLD, DATABASE_VERSION);
                     ssKey >> cKey;
                             
 
@@ -257,10 +257,10 @@ namespace LLD
                     {
                             
                         /* Read the Key Data. */
-                        std::vector<unsigned char> vKey(vKeychain.begin() + nIterator + 15, vKeychain.begin() + nIterator + 15 + cKey.nLength);
+                        std::vector<unsigned char> vKeyIn(vKeychain.begin() + nIterator + 15, vKeychain.begin() + nIterator + 15 + cKey.nLength);
                                 
                         /* Found the Binary Position. */
-                        if(vKey == cKey.vKey)
+                        if(vKeyIn == vKey)
                             return true;
                             
                     }

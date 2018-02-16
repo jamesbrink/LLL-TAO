@@ -60,6 +60,9 @@ namespace LLD
         
     protected:
         
+        /* Destructor flag. */
+        bool fDestruct;
+        
         
         /* The Maximum Size of the Cache. */
         unsigned int MAX_CACHE_SIZE;
@@ -92,7 +95,7 @@ namespace LLD
         * MAX_CACHE_BUCKETS default value is 65,539 (2 bytes)
         * 
         */
-        CachePool() : MAX_CACHE_SIZE(32 * 1024 * 1024), nCurrentSize(0) {}
+        CachePool() : fDestruct(false), MAX_CACHE_SIZE(32 * 1024 * 1024), nCurrentSize(0), CACHE_THREAD(boost::bind(&CachePool::CacheCleaner, this)) {}
         
         
         /** Cache Size Constructor
@@ -100,13 +103,15 @@ namespace LLD
         * @param[in] nCacheSizeIn The maximum size of this Cache Pool
         * 
         */
-        CachePool(unsigned int nCacheSizeIn) : MAX_CACHE_SIZE(nCacheSizeIn), nCurrentSize(0) {}
+        CachePool(unsigned int nCacheSizeIn) : fDestruct(false), MAX_CACHE_SIZE(nCacheSizeIn), nCurrentSize(0), CACHE_THREAD(boost::bind(&CachePool::CacheCleaner, this)) {}
         
         
         /* Class Destructor. */
         ~CachePool()
         {
-            //CACHE_THREAD.kill();
+            fDestruct = true;
+            
+            CACHE_THREAD.join();
         }
         
         
@@ -250,7 +255,7 @@ namespace LLD
             if(nState == PENDING_WRITE) {
                 vDiskBuffer.push_back(std::make_pair(vKey, vData));
                 
-                nState = MEMORY_ONLY;
+                //nState = MEMORY_ONLY;
             }
             
             CachedData cacheObject = { nState, nTimestamp, vData };
@@ -330,7 +335,7 @@ namespace LLD
         */
         void CacheCleaner()
         {
-            while(true)
+            while(!fDestruct)
             {
                 /* Trim off less used objects if reached cache limits. */
                 if(nCurrentSize > MAX_CACHE_SIZE)
@@ -341,10 +346,8 @@ namespace LLD
                         for(auto obj : mapObjects[nBucket])
                         {
                             /* Don't clear objects waiting for writes. */
-                            if((obj.second.State & PENDING_WRITE) || (obj.second.State & PENDING_ERASE))
-                                continue;
-                            
-                            vKeys.push_back(obj);
+                            if((obj.second.State != PENDING_WRITE) && (obj.second.State != PENDING_ERASE))
+                                vKeys.push_back(obj);
                         }
                     }
                     
@@ -359,7 +362,7 @@ namespace LLD
                     }
                 }
                 
-                Sleep(1000);
+                Sleep(1);
             }
         }
     };

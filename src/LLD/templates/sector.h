@@ -317,7 +317,7 @@ namespace LLD
             
             unsigned int nBucket = 0, nIterator = 0;
             if(SectorKeys->Find(vKey, nBucket, nIterator))
-            {	
+            {
                 /* Check that the key is not pending in a transaction for Erase. */
                 if(pTransaction && pTransaction->mapEraseData.count(vKey))
                     return false;
@@ -341,7 +341,7 @@ namespace LLD
                 /** Open the Stream to Read the data from Sector on File. **/
                 /* Open the Stream to Read the data from Sector on File. */
                 std::string strFilename = strprintf("%s-%u.dat", strLocation.c_str(), cKey.nSectorFile);
-                std::fstream fStream(strFilename.c_str(), std::ios::in | std::ios::binary);
+                std::fstream fStream(strFilename.c_str(), std::ios::in | std::ios::out | std::ios::binary);
                 if(!fStream)
                     return error("Sector File %s Doesn't Exist\n", strFilename.c_str());
                 
@@ -358,7 +358,7 @@ namespace LLD
                 /** Check the Data Integrity of the Sector by comparing the Checksums. **/
                 unsigned int nChecksum = LLC::HASH::SK32(vData);
                 if(cKey.nChecksum != nChecksum)
-                    return error("Sector Get() : Checksums don't match data. Corrupted Sector.");
+                    return error("Sector Get() : Checksums don't match data. Corrupted Sector (%u - %u)", nChecksum, cKey.nChecksum);
                 
                 if(GetArg("-verbose", 0) >= 4)
                     printf("SECTOR GET:%s\n", HexStr(vData.begin(), vData.end()).c_str());
@@ -377,10 +377,13 @@ namespace LLD
         {
             LOCK(SECTOR_MUTEX);
             
-            cachePool->Put(vKey, vData, PENDING_WRITE);
+            if(GetBoolArg("-cachepool", true))
+            {
+                cachePool->Put(vKey, vData, PENDING_WRITE);
             
-            return true;
-            
+                if(!GetBoolArg("-forcewrite", false))
+                    return true;
+            }
             
             if(GetBoolArg("-runtime", false))
                 runtime.Start();
@@ -489,12 +492,12 @@ namespace LLD
                     if(fDestruct)
                         return;
                     
-                    Sleep(1);
+                    Sleep(10, true);
                     
                     continue;
                 }
                 
-                /* Allocate new File if Needed. TODO: Check if sectors go over file size, assign new file if so */
+                /* Allocate new File if Needed. */
                 if(nCurrentFileSize > MAX_SECTOR_FILE_SIZE)
                 {
                     if(GetArg("-verbose", 0) >= 4)
@@ -512,6 +515,7 @@ namespace LLD
                 
                 /* Go through and do overwrite operations. */
                 std::vector< unsigned char > vBatch;
+                std::vector< SectorKey > vBatchKeys;
                 for(auto vObj : vIndexes)
                 {
                         
@@ -533,6 +537,7 @@ namespace LLD
                         
                         /* Setup the Batch data write. */
                         vBatch.insert(vBatch.end(), vObj.second.begin(), vObj.second.end());
+                        vBatchKeys.push_back(cKey);
                     }
                     else
                     {
@@ -565,12 +570,12 @@ namespace LLD
                         SectorKeys->Put(cKey, nBucket, nIterator);
                         
                         /* Update the Cache Pool. */
-                        //cachePool.SetState(vObj.first, MEMORY_ONLY);
+                        cachePool->SetState(vObj.first, MEMORY_ONLY);
                     }
                 }
                 
                 /* Write the data in one operation. */
-                if(vBatch.size() > 0)
+                if(vBatch.size() > 0 || fDestruct)
                 {
                     /* Open the Stream to Read the data from Sector on File. */
                     std::string strFilename = strprintf("%s-%u.dat", strLocation.c_str(), nCurrentFile);
@@ -584,6 +589,9 @@ namespace LLD
                     
                     /* Set the new current file size. */
                     nCurrentFileSize = nTempFileSize;
+                    
+                    for(auto key : vBatchKeys)
+                        cachePool->SetState(key.vKey, MEMORY_ONLY);
                 }
             }
         }
