@@ -157,6 +157,9 @@ namespace LLD
             if(GetBoolArg("-runtime", false))
                 runtime.Start();
             
+            //Try to recover if a txlog fails
+            std::string strFilename = strprintf("%s-txlog.dat");
+            
             /* Find the most recent append file. */
             while(true)
             {
@@ -299,7 +302,7 @@ namespace LLD
             {
                 
                 std::vector<unsigned char> vOriginalData;
-                //Get(vKey, vOriginalData);
+                Get(vKey, vOriginalData);
                 
                 return pTransaction->AddTransaction(vKey, vData, vOriginalData);
             }
@@ -379,10 +382,14 @@ namespace LLD
             
             if(GetBoolArg("-cachepool", true))
             {
-                cachePool->Put(vKey, vData, PENDING_WRITE);
-            
                 if(!GetBoolArg("-forcewrite", false))
+                {
+                    cachePool->Put(vKey, vData, PENDING_WRITE);
+                    
                     return true;
+                }
+                else
+                    cachePool->Put(vKey, vData, MEMORY_ONLY);
             }
             
             if(GetBoolArg("-runtime", false))
@@ -575,7 +582,7 @@ namespace LLD
                 }
                 
                 /* Write the data in one operation. */
-                if(vBatch.size() > 0 || fDestruct)
+                if(vBatch.size() > 100 || fDestruct)
                 {
                     /* Open the Stream to Read the data from Sector on File. */
                     std::string strFilename = strprintf("%s-%u.dat", strLocation.c_str(), nCurrentFile);

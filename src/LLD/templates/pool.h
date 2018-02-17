@@ -31,6 +31,8 @@ namespace LLD
         
         MEMORY_ONLY   = 10, //Default State
         
+        TRANSACTION   = 11,
+        
         COMPLETED     = 255
     };
     
@@ -83,6 +85,9 @@ namespace LLD
         /* Disk Buffer Object to flush objects to disk. */
         std::vector< std::pair<std::vector<unsigned char>, std::vector<unsigned char>> > vDiskBuffer;
         
+        
+        /* Transaction Disk Buffer Object. */
+        std::vector< std::pair<std::vector<unsigned char>, std::vector<unsigned char>> > vTransactionBuffer;
         
         /* Thread of cache cleaner. */
         Thread_t CACHE_THREAD;
@@ -252,11 +257,11 @@ namespace LLD
             if(!Has(vKey, nBucket))
                 nCurrentSize += vData.size();
             
-            if(nState == PENDING_WRITE) {
+            if(nState == PENDING_WRITE)
                 vDiskBuffer.push_back(std::make_pair(vKey, vData));
+
+            //else if(nState >= TX_BEGIN && nState <= TX_END)
                 
-                //nState = MEMORY_ONLY;
-            }
             
             CachedData cacheObject = { nState, nTimestamp, vData };
             mapObjects[nBucket][vKey] = cacheObject;
@@ -269,6 +274,25 @@ namespace LLD
         *
         */
         bool GetDiskBuffer(std::vector< std::pair<std::vector<unsigned char>, std::vector<unsigned char>> >& vBuffer)
+        {
+            LOCK(MUTEX);
+            
+            if(vDiskBuffer.size() == 0)
+                return false;
+            
+            vBuffer = vDiskBuffer;
+            vDiskBuffer.clear();
+            
+            return true;
+        }
+        
+        
+        /** Get Transaction Buffer.
+        * 
+        *  Returns the current disk buffer ready for writing.
+        *
+        */
+        bool GetTransactionBuffer(std::vector< std::pair<std::vector<unsigned char>, std::vector<unsigned char>> >& vBuffer)
         {
             LOCK(MUTEX);
             

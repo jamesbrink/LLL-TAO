@@ -51,6 +51,7 @@ namespace LLD
     const unsigned int TOTAL_KEYCHAIN_BUCKETS = 256 * 256;
     
     
+    
     /** Key Class to Hold the Location of Sectors it is referencing. 
         This Indexes the Sector Database. **/
     class SectorKey
@@ -202,8 +203,16 @@ namespace LLD
         /** Handle the Assigning of a Map Bucket. **/
         unsigned int GetBucket(const std::vector<unsigned char>& vKey) const
         {
-            assert(vKey.size() > 1);
-            return ((vKey[0] << 8) + vKey[1]);
+            //assert(vKey.size() > 1);
+            //uint64 nBucket = LLC::HASH::SK64(vKey);
+            
+            //return nBucket % TOTAL_KEYCHAIN_BUCKETS;//65536;
+            
+            uint64 nBucket = 0;
+            for(int i = 0; i < vKey.size() && i < 8; i++)
+                nBucket += vKey[i] << (8 * i);
+            
+            return nBucket % TOTAL_KEYCHAIN_BUCKETS;
         }
         
         

@@ -69,13 +69,13 @@ namespace LLD
         Mutex_t TX_MUTEX;
         
         /** New Data to be Added. **/
-        std::map< std::vector<unsigned char>, std::vector<unsigned char> > mapTransactions;
+        std::vector< std::pair< std::vector<unsigned char>, std::vector<unsigned char> > > vTransactions;
         
         /** Original Data that is retained when new one is added. **/
-        std::map< std::vector<unsigned char>, std::vector<unsigned char> > mapOriginalData;
+        std::vector< std::pair< std::vector<unsigned char>, std::vector<unsigned char> > > vOriginalData;
         
         /** Vector to hold the keys of transactions to be erased. **/
-        std::map< std::vector<unsigned char>, unsigned int > mapEraseData;
+        std::vector< std::vector<unsigned char> > mapEraseData;
         
         /** Basic Constructor. **/
         SectorTransaction(){ }
@@ -86,8 +86,8 @@ namespace LLD
         {
             LOCK(TX_MUTEX);
             
-            mapTransactions[vKey] = vData;
-            mapOriginalData[vKey] = vOriginalData;
+            mapTransactions.push_back(std::make_pair(vKey, vData));
+            mapOriginalData.push_Back(std::make_pair(vKey, vOriginalData));
             
             return true;
         }

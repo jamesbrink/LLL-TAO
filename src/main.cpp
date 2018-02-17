@@ -99,6 +99,20 @@ int main(int argc, char** argv)
 {
     ParseParameters(argc, argv);
     
+    std::vector<unsigned char> vKey = {5, 6, 10, 11};
+    
+    Timer timer1;
+    timer1.Start();
+    unsigned int hash = LLC::HASH::SK64(vKey);
+    hash = hash % 65536;
+    unsigned int nTime = timer1.ElapsedMicroseconds();
+    printf("LLC::HASH::SK64 %u\n", nTime);
+    
+    timer1.Reset();
+    hash = ((vKey[0] << 8) + vKey[1]);
+    nTime = timer1.ElapsedMicroseconds();
+    printf("Bitwise Shifts %u\n", nTime);
+    
     printf("Lower Level Library Initialization...\n");
     
     TestDB* db = new TestDB();
@@ -160,7 +174,8 @@ int main(int argc, char** argv)
     leveldb::DB* ldb;
     leveldb::Options options;
     options.create_if_missing = true;
-    options.block_size = 256000;
+    //options.write_buffer_size = 32 * 1024 * 1024;
+    //options.block_size = 256000;
 
     leveldb::Status status = leveldb::DB::Open(options, GetDataDir().string() + "/leveldb" , &ldb);
 
