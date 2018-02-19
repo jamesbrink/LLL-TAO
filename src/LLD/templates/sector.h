@@ -95,7 +95,7 @@ namespace LLD
         
         
         /* Class to handle Transaction Data. */
-        SectorTransaction* pTransaction;
+        bool fTransaction = false;
         
         
         /* Sector Keys Database. */
@@ -211,6 +211,7 @@ namespace LLD
         }
         
         
+        
         /* Get the keys for this sector database from the keychain.  */
         std::vector< std::vector<unsigned char> > GetKeys() { return SectorKeys->GetKeys(); }
         
@@ -229,6 +230,7 @@ namespace LLD
             return SectorKeys->Find(vKey, nBucket, nIterator);
         }
         
+        
         template<typename Key>
         bool Erase(const Key& key)
         {
@@ -241,19 +243,15 @@ namespace LLD
             ssKey << key;
             std::vector<unsigned char> vKey(ssKey.begin(), ssKey.end());
             
-            if(pTransaction){
-                pTransaction->EraseTransaction(vKey);
-                
-                return true;
-            }
-
-            
-            /** Return the Key existance in the Keychain Database. **/
-            return SectorKeys->Erase(vKey);
-            
             if(GetBoolArg("-runtime", false))
                 printf(ANSI_COLOR_GREEN "LLD::Sector::Erase() executed in %u micro-seconds\n" ANSI_COLOR_RESET, runtime.ElapsedMicroseconds());
+            
+            /* Return the Key existance in the Keychain Database. */
+            cachePool->Remove(vKey); //TODO: Transaction Erase
+            
+            return SectorKeys->Erase(vKey);
         }
+        
         
         template<typename Key, typename Type>
         bool Read(const Key& key, Type& value)
@@ -280,6 +278,7 @@ namespace LLD
 
             return true;
         }
+        
 
         template<typename Key, typename Type>
         bool Write(const Key& key, const Type& value)
@@ -296,16 +295,6 @@ namespace LLD
             CDataStream ssValue(SER_LLD, DATABASE_VERSION);
             ssValue << value;
             std::vector<unsigned char> vData(ssValue.begin(), ssValue.end());
-
-            /** Commit to the Database. **/
-            if(pTransaction)
-            {
-                
-                std::vector<unsigned char> vOriginalData;
-                Get(vKey, vOriginalData);
-                
-                return pTransaction->AddTransaction(vKey, vData, vOriginalData);
-            }
             
             return Put(vKey, vData);
         }
@@ -336,24 +325,24 @@ namespace LLD
                     return true;
                 }
                 
-                /** Read the Sector Key from Keychain. **/
+                /* Read the Sector Key from Keychain. */
                 SectorKey cKey;
                 if(!SectorKeys->Get(vKey, cKey, nBucket, nIterator))
                     return false;
                 
-                /** Open the Stream to Read the data from Sector on File. **/
+
                 /* Open the Stream to Read the data from Sector on File. */
                 std::string strFilename = strprintf("%s-%u.dat", strLocation.c_str(), cKey.nSectorFile);
                 std::fstream fStream(strFilename.c_str(), std::ios::in | std::ios::out | std::ios::binary);
                 if(!fStream)
                     return error("Sector File %s Doesn't Exist\n", strFilename.c_str());
                 
-                /** Seek to the Sector Position on Disk. **/
+                /* Seek to the Sector Position on Disk. */
                 fStream.seekg(cKey.nSectorStart, std::ios::beg);
                 
                 //TODO: Add Sector Data available checks. WILL CHECK IF DATABASE FAILED TO FINISH WRITING SECTOR
             
-                /** Read the State and Size of Sector Header. **/
+                /* Read the State and Size of Sector Header. */
                 vData.resize(cKey.nSectorSize);
                 fStream.read((char*) &vData[0], vData.size());
                 fStream.close();
@@ -375,7 +364,7 @@ namespace LLD
         }
         
         
-        /** Add / Update A Record in the Database **/
+        /* Add / Update A Record in the Database */
         bool Put(std::vector<unsigned char> vKey, std::vector<unsigned char> vData)
         {
             LOCK(SECTOR_MUTEX);
@@ -634,9 +623,8 @@ namespace LLD
         bool RollbackTransactions()
         {
                 /** Iterate the original data memory map to reset the database to its previous state. **/
-            for(typename std::map< std::vector<unsigned char>, std::vector<unsigned char> >::iterator nIterator = pTransaction->mapOriginalData.begin(); nIterator != pTransaction->mapOriginalData.end(); nIterator++ )
-                if(!Put(nIterator->first, nIterator->second))
-                    return false;
+            for(auto vData : pTransaction->vOriginalData)
+                Put(vData.first, vData.second);
                 
             return true;
         }

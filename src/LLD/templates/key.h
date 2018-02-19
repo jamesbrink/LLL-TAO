@@ -39,8 +39,9 @@ namespace LLD
         EMPTY 			= 0,
         READ  			= 1,
         WRITE 			= 2,
-        READY 			= 3,
-        TRANSACTION     = 4
+        READY 			= 3
+        
+        //TRANSACTION     = 4
     };
     
     /* Maximum size a file can be in the keychain. */

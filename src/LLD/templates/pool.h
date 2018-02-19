@@ -30,8 +30,7 @@ namespace LLD
         PENDING_ERASE = 1,
         
         MEMORY_ONLY   = 10, //Default State
-        
-        TRANSACTION   = 11,
+        PENDING_TX    = 11,
         
         COMPLETED     = 255
     };
@@ -40,8 +39,8 @@ namespace LLD
     /* Holding Object for Memory Maps. */
     struct CachedData
     {
-        unsigned char State;
-        uint64        Timestamp;
+        unsigned char  State;
+        uint64         Timestamp;
         std::vector<unsigned char> Data;
     };
     
@@ -89,6 +88,7 @@ namespace LLD
         /* Transaction Disk Buffer Object. */
         std::vector< std::pair<std::vector<unsigned char>, std::vector<unsigned char>> > vTransactionBuffer;
         
+        
         /* Thread of cache cleaner. */
         Thread_t CACHE_THREAD;
         
@@ -128,9 +128,11 @@ namespace LLD
         */
         unsigned int GetBucket(std::vector<unsigned char> vKey) const 
         { 
-            assert(vKey.size() > 1);
+            uint64 nBucket = 0;
+            for(int i = 0; i < vKey.size() && i < 8; i++)
+                nBucket += vKey[i] << (8 * i);
             
-            return (vKey[0] << 8) + (vKey[1]);
+            return nBucket % TOTAL_KEYCHAIN_BUCKETS;
         }
         
         
@@ -257,10 +259,13 @@ namespace LLD
             if(!Has(vKey, nBucket))
                 nCurrentSize += vData.size();
             
+            /* Handle the Writing Buffer, out of transaction orders. */
             if(nState == PENDING_WRITE)
                 vDiskBuffer.push_back(std::make_pair(vKey, vData));
-
-            //else if(nState >= TX_BEGIN && nState <= TX_END)
+            
+            /* Handle a Pending Transaction, write to buffer */
+            else if(nState == PENDING_TX)
+                vTransactionBuffer.push_back(std::make_pair(vKey, vData));
                 
             
             CachedData cacheObject = { nState, nTimestamp, vData };
@@ -296,11 +301,11 @@ namespace LLD
         {
             LOCK(MUTEX);
             
-            if(vDiskBuffer.size() == 0)
+            if(vTransactionBuffer.size() == 0)
                 return false;
             
-            vBuffer = vDiskBuffer;
-            vDiskBuffer.clear();
+            vBuffer = vTransactionBuffer;
+            vTransactionBuffer.clear();
             
             return true;
         }
@@ -312,7 +317,7 @@ namespace LLD
         * @param[in] nState The new state of the object.
         * 
         */
-        void SetState(std::vector<unsigned char> vKey, unsigned char nState)
+        void SetState(std::vector<unsigned char> vKey, unsigned short nState)
         {
             auto nBucket = GetBucket(vKey);
             if(!Has(vKey, nBucket))
@@ -341,6 +346,9 @@ namespace LLD
             
             nCurrentSize -= mapObjects[nBucket][vKey].Data.size();
             
+            //if(mapObjects[nBucket][vKey].State == PENDING_TX)
+            //    mapObjects[nBucket][vKey].State = PENDING_ERASE;
+            //else
             mapObjects[nBucket].erase(vKey);
             
             return true;
@@ -369,8 +377,8 @@ namespace LLD
                     {
                         for(auto obj : mapObjects[nBucket])
                         {
-                            /* Don't clear objects waiting for writes. */
-                            if((obj.second.State != PENDING_WRITE) && (obj.second.State != PENDING_ERASE))
+                            /* Don't clear objects waiting for writes or transactions. */
+                            if( (obj.second.State != PENDING_WRITE) && (obj.second.State != PENDING_ERASE) && (obj.second.State != PENDING_TX) )
                                 vKeys.push_back(obj);
                         }
                     }
