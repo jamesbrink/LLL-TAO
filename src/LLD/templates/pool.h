@@ -267,7 +267,7 @@ namespace LLD
             else if(nState == PENDING_TX)
                 vTransactionBuffer.push_back(std::make_pair(vKey, vData));
                 
-            
+            /* Overwrite existing objects. */
             CachedData cacheObject = { nState, nTimestamp, vData };
             mapObjects[nBucket][vKey] = cacheObject;
         }
@@ -352,6 +352,25 @@ namespace LLD
             mapObjects[nBucket].erase(vKey);
             
             return true;
+        }
+        
+        
+        /** Force Remove Object by Index
+        * 
+        * @param[in] vKey Binary Data of the Key
+        * @param[in] nState The State objects to remove
+        * 
+        * 
+        * NOTE: This is high complexity, use sparingly
+        * 
+        */
+        void Remove(unsigned char nState)
+        {
+            std::vector< std::vector<unsigned char> > vKeys;
+            GetIndexes(vKeys, nState);
+            
+            for(auto Key : vKeys)
+                Remove(Key);
         }
         
         

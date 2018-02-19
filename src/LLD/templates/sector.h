@@ -94,8 +94,8 @@ namespace LLD
         Timer runtime;
         
         
-        /* Class to handle Transaction Data. */
-        bool fTransaction = false;
+        /* Transaction Data Flags. */
+        bool fTransaciton = false;
         
         
         /* Sector Keys Database. */
@@ -112,7 +112,7 @@ namespace LLD
         
         //std::unordered_map< std::vector<unsigned char>, std::vector<unsigned char>, SK_Hashmap > mapRecordCache;
         //std::map< std::vector<unsigned char>, std::vector<unsigned char> > mapRecordCache[MAX_SECTOR_CACHE_BUCKETS];
-        CachePool* cachePool;
+        CachePool* CachePool;
         
         /* The current File Position. */
         mutable unsigned int nCurrentFile;
@@ -123,7 +123,7 @@ namespace LLD
         
     public:
         /** The Database Constructor. To determine file location and the Bytes per Record. **/
-        SectorDatabase(std::string strName, std::string strKeychain, const char* pszMode="r+") : cachePool(new CachePool(MAX_SECTOR_CACHE_SIZE)), CacheWriterThread(boost::bind(&SectorDatabase::CacheWriter, this))
+        SectorDatabase(std::string strName, std::string strKeychain, const char* pszMode="r+") : CachePool(new CachePool(MAX_SECTOR_CACHE_SIZE)), CacheWriterThread(boost::bind(&SectorDatabase::CacheWriter, this))
         {
             /* Create the Sector Database Directories. */
             boost::filesystem::path dir(GetDataDir().string() + "/datachain");
@@ -146,8 +146,8 @@ namespace LLD
             fDestruct = true;
             
             CacheWriterThread.join();
-            delete pTransaction;
-            delete cachePool;
+            
+            delete CachePool;
         }
         
         
@@ -202,8 +202,6 @@ namespace LLD
             if(!SectorKeys)
                 error("LLD::Sector::Initialized() : Sector Keys not Registered for Name %s\n", strKeychainRegistry.c_str());
             
-            pTransaction = NULL;
-            
             if(GetBoolArg("-runtime", false))
                 printf(ANSI_COLOR_GREEN "LLD::Sector::Initialized() executed in %u micro-seconds\n" ANSI_COLOR_RESET, runtime.ElapsedMicroseconds());
             
@@ -247,7 +245,7 @@ namespace LLD
                 printf(ANSI_COLOR_GREEN "LLD::Sector::Erase() executed in %u micro-seconds\n" ANSI_COLOR_RESET, runtime.ElapsedMicroseconds());
             
             /* Return the Key existance in the Keychain Database. */
-            cachePool->Remove(vKey); //TODO: Transaction Erase
+            CachePool->Remove(vKey); //TODO: Transaction Erase
             
             return SectorKeys->Erase(vKey);
         }
@@ -304,26 +302,12 @@ namespace LLD
         {
             LOCK(SECTOR_MUTEX);
             
-            if(cachePool->Get(vKey, vData))
+            if(CachePool->Get(vKey, vData))
                 return true;
             
             unsigned int nBucket = 0, nIterator = 0;
             if(SectorKeys->Find(vKey, nBucket, nIterator))
             {
-                /* Check that the key is not pending in a transaction for Erase. */
-                if(pTransaction && pTransaction->mapEraseData.count(vKey))
-                    return false;
-                
-                /* Check if the new data is set in a transaction to ensure that the database knows what is in volatile memory. */
-                if(pTransaction && pTransaction->mapTransactions.count(vKey))
-                {
-                    vData = pTransaction->mapTransactions[vKey];
-                    
-                    if(GetArg("-verbose", 0) >= 4)
-                        printf("SECTOR GET:%s\n", HexStr(vData.begin(), vData.end()).c_str());
-                    
-                    return true;
-                }
                 
                 /* Read the Sector Key from Keychain. */
                 SectorKey cKey;
@@ -369,22 +353,29 @@ namespace LLD
         {
             LOCK(SECTOR_MUTEX);
             
-            if(GetBoolArg("-cachepool", true))
+            /* Write to Cache Pool Memory First if Possible. */
+            if(!GetBoolArg("-forcewrite", false))
             {
-                if(!GetBoolArg("-forcewrite", false))
-                {
-                    cachePool->Put(vKey, vData, PENDING_WRITE);
+                CachePool->Put(vKey, vData, fTransaction ? PENDING_TX : PENDING_WRITE);
                     
-                    return true;
-                }
-                else
-                    cachePool->Put(vKey, vData, MEMORY_ONLY);
+                return true;
             }
             
+            /* Write Transactions to Cache Pool. */
+            else if(fTransaction)
+            {
+                CachePool->Put(vKey, vData, PENDING_TX);
+                
+                return true;
+            }
+            else
+                CachePool->Put(vKey, vData, MEMORY_ONLY);
+            
+            /* Runtime Calculations. */
             if(GetBoolArg("-runtime", false))
                 runtime.Start();
             
-            /* Write Header if First Update. */
+            /* Only if the Writes are forced. */
             unsigned int nIterator = 0, nBucket = 0;
             if(!SectorKeys->Find(vKey, nBucket, nIterator))
             {
@@ -421,6 +412,9 @@ namespace LLD
                 
                 /* Assign the Key to Keychain. */
                 SectorKeys->Put(cKey, nBucket, nIterator);
+                
+                /* Update the Data in the Cache Pool. */
+                CachePool->SetState(key.vKey, MEMORY_ONLY);
             }
             else
             {
@@ -445,14 +439,16 @@ namespace LLD
                 
                 /* Assign the Writing State for Sector. */
                 //TODO: use memory maps
-                
                 fStream.write((char*) &vData[0], vData.size());
                 fStream.close();
                 
+                /* Update the Keychain. */
                 cKey.nState    = READY;
                 cKey.nChecksum = LLC::HASH::SK32(vData);
-                
                 SectorKeys->Put(cKey, nBucket, nIterator);
+                
+                /* Update the Data in the Cache Pool. */
+                CachePool->SetState(key.vKey, MEMORY_ONLY);
             }
             
             if(GetArg("-verbose", 0) >= 4)
@@ -483,7 +479,7 @@ namespace LLD
                 
                 /* Check for data to be written. */
                 std::vector< std::pair<std::vector<unsigned char>, std::vector<unsigned char>> > vIndexes;
-                if(!cachePool->GetDiskBuffer(vIndexes))
+                if(!CachePool->GetDiskBuffer(vIndexes))
                 {
                     if(fDestruct)
                         return;
@@ -514,22 +510,20 @@ namespace LLD
                 std::vector< SectorKey > vBatchKeys;
                 for(auto vObj : vIndexes)
                 {
-                        
+                    LOCK(SECTOR_MUTEX);
+                    
                     /* Setup for batch write on first update. */
                     unsigned int nIterator = 0, nBucket = 0;
                     if(!SectorKeys->Find(vObj.first, nBucket, nIterator))
                     {
                         /* Create a new Sector Key. */
-                        SectorKey cKey(READY, vObj.first, nCurrentFile, nTempFileSize, vObj.second.size()); 
+                        SectorKey cKey(READY, vObj.first, nCurrentFile, nTempFileSize, vObj.second.size(), nBucket, nIterator); 
                         
                         /* Check the Data Integrity of the Sector by comparing the Checksums. */
                         cKey.nChecksum    = LLC::HASH::SK32(vObj.second);
                         
                         /* Increment the current filesize */
                         nTempFileSize += vObj.second.size();
-                        
-                        /* Assign the Key to Keychain. */
-                        SectorKeys->Put(cKey, nBucket, nIterator);
                         
                         /* Setup the Batch data write. */
                         vBatch.insert(vBatch.end(), vObj.second.begin(), vObj.second.end());
@@ -563,16 +557,17 @@ namespace LLD
                         /* Update the Keychain. */
                         cKey.nState    = READY;
                         cKey.nChecksum = LLC::HASH::SK32(vObj.second);
-                        SectorKeys->Put(cKey, nBucket, nIterator);
                         
-                        /* Update the Cache Pool. */
-                        cachePool->SetState(vObj.first, MEMORY_ONLY);
+                        /* Force Write per Key. */
+                        SectorKeys->Put(cKey, nBucket, nIterator);
                     }
                 }
                 
                 /* Write the data in one operation. */
                 if(vBatch.size() > 100 || fDestruct)
                 {
+                    LOCK(SECTOR_MUTEX);
+                    
                     /* Open the Stream to Read the data from Sector on File. */
                     std::string strFilename = strprintf("%s-%u.dat", strLocation.c_str(), nCurrentFile);
                     std::fstream fStream(strFilename.c_str(), std::ios::in | std::ios::out | std::ios::binary);
@@ -586,8 +581,12 @@ namespace LLD
                     /* Set the new current file size. */
                     nCurrentFileSize = nTempFileSize;
                     
+                    /* Write all the keys after disk operations. */
                     for(auto key : vBatchKeys)
-                        cachePool->SetState(key.vKey, MEMORY_ONLY);
+                    {
+                        SectorKeys->Put(key, key.nBucket, key.nIterator);
+                        CachePool->SetState(key.vKey, MEMORY_ONLY);
+                    }
                 }
             }
         }
@@ -597,66 +596,133 @@ namespace LLD
             If any of the database updates fail in procewss it will roll the database back to its previous state. **/
         void TxnBegin()
         {
-            /** Delete a previous database transaction pointer if applicable. **/
-            if(pTransaction)
-                delete pTransaction;
-            
-            /** Create the new Database Transaction Object. **/
-            pTransaction = new SectorTransaction();
-            
-            if(GetArg("-verbose", 0) >= 4)
-                printf("TransactionStart() : New Sector Transaction Started.\n");
+            if(fTransaction)
+                Remove(PENDING_TX);
+            else
+                fTransaction = true;
         }
         
         /** Abort the current transaction that is pending in the transaction chain. **/
         void TxnAbort()
         {
             /** Delete the previous transaction pointer if applicable. **/
-            if(pTransaction)
-                delete pTransaction;
-            
-            /** Set the transaction pointer to null also acting like a flag **/
-            pTransaction = NULL;
+            if(fTransaction)
+                Remove(PENDING_TX);
         }
         
-        /** Return the database state back to its original state before transactions are commited. **/
-        bool RollbackTransactions()
+        /** Commit the Data in the Transaction Object to the Database Disk. */
+        bool TxnCommit()
         {
-                /** Iterate the original data memory map to reset the database to its previous state. **/
-            for(auto vData : pTransaction->vOriginalData)
-                Put(vData.first, vData.second);
+            /* Check for data to be written. */
+            std::vector< std::pair<std::vector<unsigned char>, std::vector<unsigned char>> > vIndexes;
+            if(!CachePool->GetTransactionBuffer(vIndexes))
+                return false;
                 
+            /* Allocate new File if Needed. */
+            if(nCurrentFileSize > MAX_SECTOR_FILE_SIZE)
+            {
+                if(GetArg("-verbose", 0) >= 4)
+                    printf("SECTOR::Put(): Current File too Large, allocating new File %u\n", nCurrentFileSize, nCurrentFile + 1);
+                                
+                nCurrentFile ++;
+                nCurrentFileSize = 0;
+                            
+                std::ofstream fStream(strprintf("%s-%u.dat", strLocation.c_str(), nCurrentFile).c_str(), std::ios::out | std::ios::binary);
+                fStream.close();
+            }
+                
+            /* Temp Variable for Reads / Writes. */
+            unsigned int nTempFileSize = nCurrentFileSize;
+                
+            /* Go through and do overwrite operations. */
+            std::vector< unsigned char > vBatch;
+            std::vector< SectorKey > vBatchKeys;
+            for(auto vObj : vIndexes)
+            {
+                LOCK(SECTOR_MUTEX);
+                    
+                /* Setup for batch write on first update. */
+                unsigned int nIterator = 0, nBucket = 0;
+                if(!SectorKeys->Find(vObj.first, nBucket, nIterator))
+                {
+                    /* Create a new Sector Key. */
+                    SectorKey cKey(READY, vObj.first, nCurrentFile, nTempFileSize, vObj.second.size()); 
+                        
+                    /* Check the Data Integrity of the Sector by comparing the Checksums. */
+                    cKey.nChecksum    = LLC::HASH::SK32(vObj.second);
+                        
+                    /* Increment the current filesize */
+                    nTempFileSize += vObj.second.size();
+                        
+                    /* Assign the Key to Keychain. */
+                    SectorKeys->Put(cKey, nBucket, nIterator);
+                        
+                    /* Setup the Batch data write. */
+                    vBatch.insert(vBatch.end(), vObj.second.begin(), vObj.second.end());
+                    vBatchKeys.push_back(cKey);
+                }
+                else
+                {
+                    /* Get the Sector Key from the Keychain. */
+                    SectorKey cKey;
+                    if(!SectorKeys->Get(vObj.first, cKey, nBucket, nIterator))
+                        return false;
+                            
+                    /* Open the Stream to Read the data from Sector on File. */
+                    std::string strFilename = strprintf("%s-%u.dat", strLocation.c_str(), cKey.nSectorFile);
+                    std::fstream fStream(strFilename.c_str(), std::ios::in | std::ios::out | std::ios::binary);
+                        
+                    /* Locate the Sector Data from Sector Key. 
+                        TODO: Make Paging more Efficient in Keys by breaking data into different locations in Database. */
+                    fStream.seekp(cKey.nSectorStart, std::ios::beg);
+                    if(vObj.second.size() > cKey.nSectorSize){
+                        fStream.close();
+                        printf("ERROR PUT (TOO LARGE) NO TRUNCATING ALLOWED (Old %u :: New %u):%s\n", cKey.nSectorSize, vObj.second.size(), HexStr(vObj.second.begin(), vObj.second.end()).c_str());
+                            
+                        return false;
+                    }
+                        
+                    /* Write the new data to the sector. */
+                    fStream.write((char*) &vObj.second[0], vObj.second.size());
+                    fStream.close();
+                        
+                    /* Update the Keychain. */
+                    cKey.nState    = READY;
+                    cKey.nChecksum = LLC::HASH::SK32(vObj.second);
+                    cKey.nBucket   = nBucket;
+                    cKey.nIterator = nIterator;
+                    
+                    vBatchKeys.push_back(cKey);
+                }
+            }
+                
+            /* Write the data in one operation. */
+            if(vBatch.size() > 0)
+            {
+                /* Open the Stream to Read the data from Sector on File. */
+                std::string strFilename = strprintf("%s-%u.dat", strLocation.c_str(), nCurrentFile);
+                std::fstream fStream(strFilename.c_str(), std::ios::in | std::ios::out | std::ios::binary);
+                    
+                /* If it is a New Sector, Assign a Binary Position. 
+                    TODO: Track Sector Database File Sizes. */
+                fStream.seekp(nCurrentFileSize, std::ios::beg);
+                fStream.write((char*) &vBatch[0], vBatch.size());
+                fStream.close();
+                    
+                /* Set the new current file size. */
+                nCurrentFileSize = nTempFileSize;
+            }
+            
+            /* Write the Keys to Disk and Update Memory Pool. */
+            for(auto key : vBatchKeys)
+            {
+                SectorKeys->Put(key, key.nBucket, key.nIterator);
+                CachePool->SetState(key.vKey, MEMORY_ONLY);
+            }
+            
             return true;
         }
         
-        /** Commit the Data in the Transaction Object to the Database Disk.
-            TODO: Handle the Transaction Rollbacks with a new Transaction Keychain and Sector Database. 
-            Make it temporary and named after the unique identity of the sector database. 
-            Fingerprint is SK64 hash of unified time and the sector database name along with some other data 
-            To be determined... 
-            
-            1. TxnStart()
-                + Create a new Transaction Record (TODO: Find how this will be indentified. Maybe Unique Tx Hash and Registry in Journal of Active Transaction?)
-                + Create a new Transaction Memory Object
-                
-            2. Put()
-                + Add new data to the Transaction Record
-                + Add new data to the Transaction Memory
-                + Keep states of keys in a valid object for recover of corrupted keychain.
-                
-            3. Get()  NOTE: Read from the Transaction object rather than the database
-                + Read the data from the Transaction Memory 
-                
-            4. Commit()
-                + 
-            
-            **/
-        bool TxnCommit()
-        {
-            LOCK(SECTOR_MUTEX);
-            
-
-        }
     };
 }
 

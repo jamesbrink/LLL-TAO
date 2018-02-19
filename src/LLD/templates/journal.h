@@ -31,7 +31,7 @@ namespace LLD
     * 
     * TODO: Get the Sector Chain working properly
     */
-    class CJournalDB : public SectorDatabase
+    class CJournalDB
     {
     public:
         /** The Database Constructor. To determine file location and the Bytes per Record. **/

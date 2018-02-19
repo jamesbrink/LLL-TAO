@@ -77,6 +77,10 @@ namespace LLD
         /* The binary data of the Sector key. */
         std::vector<unsigned char> vKey;
         
+        /* Memory Only. */
+        unsigned int nBucket;
+        unsigned int nIterator;
+        
         /** Checksum of Original Data to ensure no database corrupted sectors. 
             TODO: Consider the Original Data from a checksum.
             When transactions implemented have transactions stored in a sector Database.
@@ -99,8 +103,8 @@ namespace LLD
         )
         
         /* Constructors. */
-        SectorKey() : nState(0), nLength(0), nSectorFile(0), nSectorSize(0), nSectorStart(0) { }
-        SectorKey(unsigned char nStateIn, std::vector<unsigned char> vKeyIn, unsigned short nSectorFileIn, unsigned int nSectorStartIn, unsigned short nSectorSizeIn) : nState(nStateIn), nSectorFile(nSectorFileIn), nSectorSize(nSectorSizeIn), nSectorStart(nSectorStartIn)
+        SectorKey() : nState(0), nLength(0), nSectorFile(0), nSectorSize(0), nSectorStart(0), nBucket(0), nIterator(0) { }
+        SectorKey(unsigned char nStateIn, std::vector<unsigned char> vKeyIn, unsigned short nSectorFileIn, unsigned int nSectorStartIn, unsigned short nSectorSizeIn, unsigned int nBucketIn = 0, unsigned int nIteratorIn = 0) : nState(nStateIn), nSectorFile(nSectorFileIn), nSectorSize(nSectorSizeIn), nSectorStart(nSectorStartIn), nBucket(nBucketIn), nIterator(nIteratorIn)
         { 
             nLength = vKeyIn.size();
             vKey    = vKeyIn;
