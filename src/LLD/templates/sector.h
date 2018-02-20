@@ -170,22 +170,22 @@ namespace LLD
             
             /* Try to recover if a txlog fails */
             std::string strFilename = strprintf("%s-txlog.dat", strJournal.c_str());
-            std::fstream fIncoming(strFilename, std::ios::in | std::ios::binary);
-            if(fIncoming)
+            std::fstream fstreamIncoming(strFilename, std::ios::in | std::ios::binary);
+            if(fstreamIncoming)
             {
-                fIncoming.ignore(std::numeric_limits<std::streamsize>:max());
-                unsigned int nSize = fIncoming.gcount();
+                fstreamIncoming.ignore(std::numeric_limits<std::streamsize>:max());
+                unsigned int nSize = fstreamIncoming.gcount();
                 
-                fIncoming.seekg (0, std::ios::beg);
+                fstreamIncoming.seekg (0, std::ios::beg);
                 std::vector<unsigned char> vKeychain(nSize, 0);
-                fIncoming.read((char*) &vKeychain[0], vKeychain.size());
-                fIncoming.close();
+                fstreamIncoming.read((char*) &vKeychain[0], vKeychain.size());
+                fstreamIncoming.close();
                 
                 /* Iterate the Data of Transaction Log. */
                 
                 
                 /* Delete the txlog file. */
-                remove(strJournal.c_str());
+                std::remove(strJournal.c_str());
             }
             
             
@@ -196,8 +196,8 @@ namespace LLD
                 /* TODO: Make a worker or thread to check sizes of files and automatically create new file.
                     Keep independent of reads and writes for efficiency. */
                 std::string strFilename = strprintf("%s-%u.dat", strLocation.c_str(), nCurrentFile);
-                std::fstream fIncoming(strFilename, std::ios::in | std::ios::binary);
-                if(!fIncoming) {
+                std::fstream fstreamIncoming(strFilename, std::ios::in | std::ios::binary);
+                if(!fstreamIncoming) {
                     
                     /* Assign the Current Size and File. */
                     if(nCurrentFile > 0)
@@ -213,9 +213,9 @@ namespace LLD
                 }
                 
                 /* Get the Binary Size. */
-                fIncoming.ignore(std::numeric_limits<std::streamsize>::max());
-                nCurrentFileSize = fIncoming.gcount();
-                fIncoming.close();
+                fstreamIncoming.ignore(std::numeric_limits<std::streamsize>::max());
+                nCurrentFileSize = fstreamIncoming.gcount();
+                fstreamIncoming.close();
                 
                 /* Increment the Current File */
                 nCurrentFile++;
@@ -652,6 +652,28 @@ namespace LLD
             std::vector< std::pair<std::vector<unsigned char>, std::vector<unsigned char>> > vIndexes;
             if(!CachePool->GetTransactionBuffer(vIndexes))
                 return false;
+            
+            
+            /* Create txlog for Recovery. */
+            std::string strFilename = strprintf("%s-txlog.dat", strJournal.c_str());
+            std::fstream fstreamJournal(strFilename, std::ios::in | std::ios::binary);
+            if(fstreamJournal)
+            {
+                fstreamIncoming.ignore(std::numeric_limits<std::streamsize>:max());
+                unsigned int nSize = fstreamIncoming.gcount();
+                
+                fstreamIncoming.seekg (0, std::ios::beg);
+                std::vector<unsigned char> vKeychain(nSize, 0);
+                fstreamIncoming.read((char*) &vKeychain[0], vKeychain.size());
+                fstreamIncoming.close();
+                
+                /* Iterate the Data of Transaction Log. */
+                
+                
+                /* Delete the txlog file. */
+                std::remove(strJournal.c_str());
+            }
+            
                 
             /* Allocate new File if Needed. */
             if(nCurrentFileSize > MAX_SECTOR_FILE_SIZE)
