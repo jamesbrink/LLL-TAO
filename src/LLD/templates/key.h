@@ -322,8 +322,8 @@ namespace LLD
                 if(fMemoryCaching)
                 {
                     /* Get the Binary Size. */
-                    fIncoming.seekg (0, std::ios::end);
-                    unsigned int nCurrentFileSize = fIncoming.tellg();
+                    fIncoming.ignore(std::numeric_limits<std::streamsize>::max());
+                    unsigned int nCurrentFileSize = fIncoming.gcount();
                     nKeychainSize += nCurrentFileSize;
                     
                     

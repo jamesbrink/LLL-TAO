@@ -74,6 +74,10 @@ namespace LLD
         std::string strLocation;
         
         
+        /* The String to hold the Disk Location of the Journal. */
+        std::string strJournal;
+        
+        
         /* The nameof the Keychain Registry. */
         std::string strKeychainRegistry;
         
@@ -130,8 +134,15 @@ namespace LLD
             if(!boost::filesystem::exists(dir))
                 boost::filesystem::create_directory(dir);
             
+            
+            /* Create the Sector Database Directories. */
+            boost::filesystem::path dir(GetDataDir().string() + "/journal");
+            if(!boost::filesystem::exists(dir))
+                boost::filesystem::create_directory(dir);
+            
             strKeychainRegistry = strKeychain;
             strLocation = GetDataDir().string() + "/datachain/" + strName;
+            strJournal  = GetDataDir().string() + "/journal/" + strName;
             
             nCurrentFile = 0;
             
@@ -157,8 +168,26 @@ namespace LLD
             if(GetBoolArg("-runtime", false))
                 runtime.Start();
             
-            //Try to recover if a txlog fails
-            std::string strFilename = strprintf("%s-txlog.dat");
+            /* Try to recover if a txlog fails */
+            std::string strFilename = strprintf("%s-txlog.dat", strJournal.c_str());
+            std::fstream fIncoming(strFilename, std::ios::in | std::ios::binary);
+            if(fIncoming)
+            {
+                fIncoming.ignore(std::numeric_limits<std::streamsize>:max());
+                unsigned int nSize = fIncoming.gcount();
+                
+                fIncoming.seekg (0, std::ios::beg);
+                std::vector<unsigned char> vKeychain(nSize, 0);
+                fIncoming.read((char*) &vKeychain[0], vKeychain.size());
+                fIncoming.close();
+                
+                /* Iterate the Data of Transaction Log. */
+                
+                
+                /* Delete the txlog file. */
+                remove(strJournal.c_str());
+            }
+            
             
             /* Find the most recent append file. */
             while(true)
@@ -184,8 +213,8 @@ namespace LLD
                 }
                 
                 /* Get the Binary Size. */
-                fIncoming.seekg(0, std::ios::end);
-                nCurrentFileSize = fIncoming.tellg();
+                fIncoming.ignore(std::numeric_limits<std::streamsize>::max());
+                nCurrentFileSize = fIncoming.gcount();
                 fIncoming.close();
                 
                 /* Increment the Current File */
@@ -610,6 +639,12 @@ namespace LLD
                 Remove(PENDING_TX);
         }
         
+        
+        bool TxnRollback()
+        {
+            return false;
+        }
+        
         /** Commit the Data in the Transaction Object to the Database Disk. */
         bool TxnCommit()
         {
@@ -666,7 +701,7 @@ namespace LLD
                     /* Get the Sector Key from the Keychain. */
                     SectorKey cKey;
                     if(!SectorKeys->Get(vObj.first, cKey, nBucket, nIterator))
-                        return false;
+                        return TxnRollback();
                             
                     /* Open the Stream to Read the data from Sector on File. */
                     std::string strFilename = strprintf("%s-%u.dat", strLocation.c_str(), cKey.nSectorFile);
@@ -679,7 +714,7 @@ namespace LLD
                         fStream.close();
                         printf("ERROR PUT (TOO LARGE) NO TRUNCATING ALLOWED (Old %u :: New %u):%s\n", cKey.nSectorSize, vObj.second.size(), HexStr(vObj.second.begin(), vObj.second.end()).c_str());
                             
-                        return false;
+                        return TxnRollback();
                     }
                         
                     /* Write the new data to the sector. */
