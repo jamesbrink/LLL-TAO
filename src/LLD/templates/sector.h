@@ -659,13 +659,13 @@ namespace LLD
             std::fstream fileJournal(strFilename, std::ios::in | std::ios::binary);
             if(fileJournal)
             {
-                fileIncoming.ignore(std::numeric_limits<std::streamsize>:max());
-                unsigned int nSize = fileIncoming.gcount();
+                fileJournal.ignore(std::numeric_limits<std::streamsize>:max());
+                unsigned int nSize = fileJournal.gcount();
                 
-                fileIncoming.seekg (0, std::ios::beg);
-                std::vector<unsigned char> vKeychain(nSize, 0);
-                fileIncoming.read((char*) &vKeychain[0], vKeychain.size());
-                fileIncoming.close();
+                fileJournal.seekg (0, std::ios::beg);
+                std::vector<unsigned char> vJournal(nSize, 0);
+                fileJournal.read((char*) &vJournal[0], vJournal.size());
+                fileJournal.close();
                 
                 /* Iterate the Data of Transaction Log. */
                 
