@@ -173,15 +173,31 @@ namespace LLD
             std::fstream fileIncoming(strFilename, std::ios::in | std::ios::binary);
             if(fileIncoming)
             {
-                fileIncoming.ignore(std::numeric_limits<std::streamsize>:max());
-                unsigned int nSize = fileIncoming.gcount();
                 
-                fileIncoming.seekg (0, std::ios::beg);
-                std::vector<unsigned char> vKeychain(nSize, 0);
-                fileIncoming.read((char*) &vKeychain[0], vKeychain.size());
-                fileIncoming.close();
+                fileJournal.ignore(std::numeric_limits<std::streamsize>:max());
+                unsigned int nSize = fileJournal.gcount();
+                
+                fileJournal.seekg (0, std::ios::beg);
+                std::vector<unsigned char> vJournal(nSize, 0);
+                fileJournal.read((char*) &vJournal[0], vJournal.size());
+                fileJournal.close();
                 
                 /* Iterate the Data of Transaction Log. */
+                unsigned int nIterator = 0;
+                while(nIterator < nSize)
+                {
+                    unsigned short nKeySize = (vJournal[nIterator] << 8) + vJournal[nIterator + 1];
+                    std::vector<unsigned char> vKey(vJournal.begin() + nIterator + 2, vJournal.begin() + nIterator + 2 + nKeySize);
+                    
+                    nIterator += nKeySize + 2;
+                    unsigned short nDataSize = (vJournal[nIterator] << 8) + vJournal[nIterator + 1];
+                    std::vector<unsigned char> vData(vJournal.begin() + nIterator + 2, vJournal.begin() + nIterator + 2 + nDataSize);
+                    
+                    nIterator += nDataSize + 2;
+                    
+                    /* Recover From Journal Data. */
+                    Put(vKey, vData);
+                }
                 
                 
                 /* Delete the txlog file. */
@@ -382,23 +398,29 @@ namespace LLD
         {
             LOCK(SECTOR_MUTEX);
             
-            /* Write to Cache Pool Memory First if Possible. */
-            if(!GetBoolArg("-forcewrite", false))
+            /* Only use Cache Pool when Initialized. */
+            if(fInitialized)
             {
-                CachePool->Put(vKey, vData, fTransaction ? PENDING_TX : PENDING_WRITE);
-                    
-                return true;
-            }
-            
-            /* Write Transactions to Cache Pool. */
-            else if(fTransaction)
-            {
-                CachePool->Put(vKey, vData, PENDING_TX);
                 
-                return true;
+                /* Write to Cache Pool Memory First if Possible. */
+                if(!GetBoolArg("-forcewrite", false))
+                {
+                    CachePool->Put(vKey, vData, fTransaction ? PENDING_TX : PENDING_WRITE);
+                        
+                    return true;
+                }
+                
+                /* Write Transactions to Cache Pool. */
+                else if(fTransaction)
+                {
+                    CachePool->Put(vKey, vData, PENDING_TX);
+                    
+                    return true;
+                }
+                else
+                    CachePool->Put(vKey, vData, MEMORY_ONLY);
+            
             }
-            else
-                CachePool->Put(vKey, vData, MEMORY_ONLY);
             
             /* Runtime Calculations. */
             if(GetBoolArg("-runtime", false))
@@ -653,27 +675,26 @@ namespace LLD
             if(!CachePool->GetTransactionBuffer(vIndexes))
                 return false;
             
+            /* Create the Journal Buffer. */
+            std::vector<unsigned char> vJournal;
+            for(auto vObj : vIndexes)
+            {
+                unsigned short nKeySize = vObj.first.size();
+                vJournal.push_back(nKeySize >> 8);
+                vJournal.push_back(nKeySize);
+                vJounral.insert(vJournal.end(), vObj.first.begin(), vObj.first.end());
+                    
+                unsigned short nDataSize = vObj.second.size();
+                vJournal.push_back(nDataSize >> 8);
+                vJournal.push_back(nDataSize);
+                vJournal.insert(vJournal.end(), vObj.second.begin(), vOBj.second.end());
+            }
             
             /* Create txlog for Recovery. */
             std::string strFilename = strprintf("%s-txlog.dat", strJournal.c_str());
-            std::fstream fileJournal(strFilename, std::ios::in | std::ios::binary);
-            if(fileJournal)
-            {
-                fileJournal.ignore(std::numeric_limits<std::streamsize>:max());
-                unsigned int nSize = fileJournal.gcount();
-                
-                fileJournal.seekg (0, std::ios::beg);
-                std::vector<unsigned char> vJournal(nSize, 0);
-                fileJournal.read((char*) &vJournal[0], vJournal.size());
-                fileJournal.close();
-                
-                /* Iterate the Data of Transaction Log. */
-                
-                
-                /* Delete the txlog file. */
-                std::remove(strJournal.c_str());
-            }
-            
+            std::fstream fileJournal(strFilename, std::ios::out | std::ios::trunc | std::ios::binary);
+            fileJournal.write((char*) &vJournal[0], vJournal.size());
+            fileJournal.close();
                 
             /* Allocate new File if Needed. */
             if(nCurrentFileSize > MAX_SECTOR_FILE_SIZE)
@@ -758,13 +779,13 @@ namespace LLD
             {
                 /* Open the Stream to Read the data from Sector on File. */
                 std::string strFilename = strprintf("%s-%u.dat", strLocation.c_str(), nCurrentFile);
-                std::fstream fStream(strFilename.c_str(), std::ios::in | std::ios::out | std::ios::binary);
+                std::fstream fileStream(strFilename.c_str(), std::ios::in | std::ios::out | std::ios::binary);
                     
                 /* If it is a New Sector, Assign a Binary Position. 
                     TODO: Track Sector Database File Sizes. */
-                fStream.seekp(nCurrentFileSize, std::ios::beg);
-                fStream.write((char*) &vBatch[0], vBatch.size());
-                fStream.close();
+                fileStream.seekp(nCurrentFileSize, std::ios::beg);
+                fileStream.write((char*) &vBatch[0], vBatch.size());
+                fileStream.close();
                     
                 /* Set the new current file size. */
                 nCurrentFileSize = nTempFileSize;
@@ -776,6 +797,9 @@ namespace LLD
                 SectorKeys->Put(key, key.nBucket, key.nIterator);
                 CachePool->SetState(key.vKey, MEMORY_ONLY);
             }
+            
+            /* Remove the Journal if Successful. */
+            std::remove(strFilename);
             
             return true;
         }
