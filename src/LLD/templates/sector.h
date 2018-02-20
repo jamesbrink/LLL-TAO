@@ -401,7 +401,6 @@ namespace LLD
             /* Only use Cache Pool when Initialized. */
             if(fInitialized)
             {
-                
                 /* Write to Cache Pool Memory First if Possible. */
                 if(!GetBoolArg("-forcewrite", false))
                 {
@@ -568,10 +567,12 @@ namespace LLD
                     if(!SectorKeys->Find(vObj.first, nBucket, nIterator))
                     {
                         /* Create a new Sector Key. */
-                        SectorKey cKey(READY, vObj.first, nCurrentFile, nTempFileSize, vObj.second.size(), nBucket, nIterator); 
+                        SectorKey cKey(READY, vObj.first, nCurrentFile, nTempFileSize, vObj.second.size()); 
                         
                         /* Check the Data Integrity of the Sector by comparing the Checksums. */
                         cKey.nChecksum    = LLC::HASH::SK32(vObj.second);
+                        cKey.nBucket      = nBucket;
+                        cKey.nIterator    = nIterator;
                         
                         /* Increment the current filesize */
                         nTempFileSize += vObj.second.size();
@@ -609,8 +610,10 @@ namespace LLD
                         cKey.nState    = READY;
                         cKey.nChecksum = LLC::HASH::SK32(vObj.second);
                         
-                        /* Force Write per Key. */
-                        SectorKeys->Put(cKey, nBucket, nIterator);
+                        cKey.nBucket   = nBucket;
+                        cKey.nIterator = nIterator;
+                        
+                        vBatchKeys.push_back(cKey);
                     }
                 }
                 

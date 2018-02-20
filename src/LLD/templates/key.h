@@ -77,10 +77,6 @@ namespace LLD
         /* The binary data of the Sector key. */
         std::vector<unsigned char> vKey;
         
-        /* Memory Only. */
-        unsigned int nBucket;
-        unsigned int nIterator;
-        
         /** Checksum of Original Data to ensure no database corrupted sectors. 
             TODO: Consider the Original Data from a checksum.
             When transactions implemented have transactions stored in a sector Database.
@@ -90,6 +86,10 @@ namespace LLD
             On startup ensure that the checksums match to ensure that the database was not stopped
             in the middle of a write. **/
         unsigned int nChecksum;
+        
+        /* Memory Only. */
+        unsigned int nBucket;
+        unsigned int nIterator;
         
         /* Serialization Macro. */
         IMPLEMENT_SERIALIZE
@@ -104,7 +104,7 @@ namespace LLD
         
         /* Constructors. */
         SectorKey() : nState(0), nLength(0), nSectorFile(0), nSectorSize(0), nSectorStart(0), nBucket(0), nIterator(0) { }
-        SectorKey(unsigned char nStateIn, std::vector<unsigned char> vKeyIn, unsigned short nSectorFileIn, unsigned int nSectorStartIn, unsigned short nSectorSizeIn, unsigned int nBucketIn = 0, unsigned int nIteratorIn = 0) : nState(nStateIn), nSectorFile(nSectorFileIn), nSectorSize(nSectorSizeIn), nSectorStart(nSectorStartIn), nBucket(nBucketIn), nIterator(nIteratorIn)
+        SectorKey(unsigned char nStateIn, std::vector<unsigned char> vKeyIn, unsigned short nSectorFileIn, unsigned int nSectorStartIn, unsigned short nSectorSizeIn) : nState(nStateIn), nSectorFile(nSectorFileIn), nSectorSize(nSectorSizeIn), nSectorStart(nSectorStartIn)
         { 
             nLength = vKeyIn.size();
             vKey    = vKeyIn;
@@ -251,6 +251,7 @@ namespace LLD
                         
                         
                 /* Iterator for Key Sectors. */
+                nIterator = 0;
                 while(nIterator < nCurrentFileSize)
                 {
                             
@@ -415,7 +416,7 @@ namespace LLD
             
             /* Debug Output of Sector Key Information. */
             if(GetArg("-verbose", 0) >= 4)
-                printf("KEY::Put(): State: %s | Length: %u | Location: %u | File: %u | Sector File: %u | Sector Size: %u | Sector Start: %u\n Key: %s", cKey.nState == READY ? "Valid" : "Invalid", cKey.nLength, nIterator, nBucket, cKey.nSectorFile, cKey.nSectorSize, cKey.nSectorStart, HexStr(cKey.vKey.begin(), cKey.vKey.end()).c_str());
+                printf("KEY::Put(): Bucket %u | Iterator %u | State: %s | Length: %u | Location: %u | File: %u | Sector File: %u | Sector Size: %u | Sector Start: %u\n Key: %s\n", nBucket, nIterator, cKey.nState == READY ? "Valid" : "Invalid", cKey.nLength, nIterator, nBucket, cKey.nSectorFile, cKey.nSectorSize, cKey.nSectorStart, HexStr(cKey.vKey.begin(), cKey.vKey.end()).c_str());
             
             
             return true;
@@ -488,7 +489,7 @@ namespace LLD
                 
             /* Debug Output of Sector Key Information. */
             if(GetArg("-verbose", 0) >= 4)
-                printf("KEY::Get(): State: %s | Length: %u | Location: %u | File: %u | Sector File: %u | Sector Size: %u | Sector Start: %u\n Key: %s\n", cKey.nState == READY ? "Valid" : "Invalid", cKey.nLength, mapKeys[nBucket][vKey], nBucket, cKey.nSectorFile, cKey.nSectorSize, cKey.nSectorStart, HexStr(cKey.vKey.begin(), cKey.vKey.end()).c_str());
+                printf("KEY::Get(): Bucket %u | Iterator %u State: %s | Length: %u | Location: %u | File: %u | Sector File: %u | Sector Size: %u | Sector Start: %u\n Key: %s\n", nBucket, nIterator, cKey.nState == READY ? "Valid" : "Invalid", cKey.nLength, mapKeys[nBucket][vKey], nBucket, cKey.nSectorFile, cKey.nSectorSize, cKey.nSectorStart, HexStr(vKey.begin(), vKey.end()).c_str());
                         
                 
             /* Skip Empty Sectors for Now. (TODO: Expand to Reads / Writes) */
