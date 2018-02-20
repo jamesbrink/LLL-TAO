@@ -56,7 +56,7 @@ namespace LLD
     * B. It can process data locked as orphans
     * 
     */
-    class CachePool
+    class MemCachePool
     {
         
     protected:
@@ -100,7 +100,7 @@ namespace LLD
         * MAX_CACHE_BUCKETS default value is 65,539 (2 bytes)
         * 
         */
-        CachePool() : fDestruct(false), MAX_CACHE_SIZE(32 * 1024 * 1024), nCurrentSize(0), CACHE_THREAD(boost::bind(&CachePool::CacheCleaner, this)) {}
+        MemCachePool() : fDestruct(false), MAX_CACHE_SIZE(32 * 1024 * 1024), nCurrentSize(0), CACHE_THREAD(boost::bind(&MemCachePool::CacheCleaner, this)) {}
         
         
         /** Cache Size Constructor
@@ -108,11 +108,11 @@ namespace LLD
         * @param[in] nCacheSizeIn The maximum size of this Cache Pool
         * 
         */
-        CachePool(unsigned int nCacheSizeIn) : fDestruct(false), MAX_CACHE_SIZE(nCacheSizeIn), nCurrentSize(0), CACHE_THREAD(boost::bind(&CachePool::CacheCleaner, this)) {}
+        MemCachePool(unsigned int nCacheSizeIn) : fDestruct(false), MAX_CACHE_SIZE(nCacheSizeIn), nCurrentSize(0), CACHE_THREAD(boost::bind(&MemCachePool::CacheCleaner, this)) {}
         
         
         /* Class Destructor. */
-        ~CachePool()
+        ~MemCachePool()
         {
             fDestruct = true;
             
@@ -132,7 +132,7 @@ namespace LLD
             for(int i = 0; i < vKey.size() && i < 8; i++)
                 nBucket += vKey[i] << (8 * i);
             
-            return nBucket % TOTAL_KEYCHAIN_BUCKETS;
+            return nBucket % MAX_CACHE_POOL_BUCKETS;
         }
         
         

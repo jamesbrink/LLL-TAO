@@ -16,7 +16,6 @@ ________________________________________________________________________________
 
 #include "pool.h"
 #include "keychain.h"
-#include "transaction.h"
 
 #include "../../Util/include/runtime.h"
 
@@ -99,7 +98,7 @@ namespace LLD
         
         
         /* Transaction Data Flags. */
-        bool fTransaciton = false;
+        bool fTransaction = false;
         
         
         /* Sector Keys Database. */
@@ -116,7 +115,7 @@ namespace LLD
         
         //std::unordered_map< std::vector<unsigned char>, std::vector<unsigned char>, SK_Hashmap > mapRecordCache;
         //std::map< std::vector<unsigned char>, std::vector<unsigned char> > mapRecordCache[MAX_SECTOR_CACHE_BUCKETS];
-        CachePool* CachePool;
+        MemCachePool* CachePool;
         
         /* The current File Position. */
         mutable unsigned int nCurrentFile;
@@ -127,7 +126,7 @@ namespace LLD
         
     public:
         /** The Database Constructor. To determine file location and the Bytes per Record. **/
-        SectorDatabase(std::string strName, std::string strKeychain, const char* pszMode="r+") : CachePool(new CachePool(MAX_SECTOR_CACHE_SIZE)), CacheWriterThread(boost::bind(&SectorDatabase::CacheWriter, this))
+        SectorDatabase(std::string strName, std::string strKeychain, const char* pszMode="r+") : CachePool(new MemCachePool(MAX_SECTOR_CACHE_SIZE)), CacheWriterThread(boost::bind(&SectorDatabase::CacheWriter, this))
         {
             /* Create the Sector Database Directories. */
             boost::filesystem::path dir(GetDataDir().string() + "/datachain");
@@ -136,9 +135,9 @@ namespace LLD
             
             
             /* Create the Sector Database Directories. */
-            boost::filesystem::path dir(GetDataDir().string() + "/journal");
-            if(!boost::filesystem::exists(dir))
-                boost::filesystem::create_directory(dir);
+            boost::filesystem::path dir2(GetDataDir().string() + "/journal");
+            if(!boost::filesystem::exists(dir2))
+                boost::filesystem::create_directory(dir2);
             
             strKeychainRegistry = strKeychain;
             strLocation = GetDataDir().string() + "/datachain/" + strName;
@@ -170,17 +169,18 @@ namespace LLD
             
             /* Try to recover if a txlog fails */
             std::string strFilename = strprintf("%s-txlog.dat", strJournal.c_str());
-            std::fstream fileIncoming(strFilename, std::ios::in | std::ios::binary);
-            if(fileIncoming)
+            std::fstream fileJournal(strFilename, std::ios::in | std::ios::binary);
+            if(fileJournal)
             {
-                
-                fileJournal.ignore(std::numeric_limits<std::streamsize>:max());
+                fileJournal.ignore(std::numeric_limits<std::streamsize>::max());
                 unsigned int nSize = fileJournal.gcount();
                 
                 fileJournal.seekg (0, std::ios::beg);
                 std::vector<unsigned char> vJournal(nSize, 0);
                 fileJournal.read((char*) &vJournal[0], vJournal.size());
                 fileJournal.close();
+                
+                printf("Starting Recovery of Data %s of %u bytes\n", strFilename.c_str(), nSize);
                 
                 /* Iterate the Data of Transaction Log. */
                 unsigned int nIterator = 0;
@@ -465,7 +465,7 @@ namespace LLD
                 SectorKeys->Put(cKey, nBucket, nIterator);
                 
                 /* Update the Data in the Cache Pool. */
-                CachePool->SetState(key.vKey, MEMORY_ONLY);
+                CachePool->SetState(cKey.vKey, MEMORY_ONLY);
             }
             else
             {
@@ -499,7 +499,7 @@ namespace LLD
                 SectorKeys->Put(cKey, nBucket, nIterator);
                 
                 /* Update the Data in the Cache Pool. */
-                CachePool->SetState(key.vKey, MEMORY_ONLY);
+                CachePool->SetState(cKey.vKey, MEMORY_ONLY);
             }
             
             if(GetArg("-verbose", 0) >= 4)
@@ -648,7 +648,7 @@ namespace LLD
         void TxnBegin()
         {
             if(fTransaction)
-                Remove(PENDING_TX);
+                CachePool->Remove(PENDING_TX);
             else
                 fTransaction = true;
         }
@@ -658,7 +658,7 @@ namespace LLD
         {
             /** Delete the previous transaction pointer if applicable. **/
             if(fTransaction)
-                Remove(PENDING_TX);
+                CachePool->Remove(PENDING_TX);
         }
         
         
@@ -682,12 +682,12 @@ namespace LLD
                 unsigned short nKeySize = vObj.first.size();
                 vJournal.push_back(nKeySize >> 8);
                 vJournal.push_back(nKeySize);
-                vJounral.insert(vJournal.end(), vObj.first.begin(), vObj.first.end());
+                vJournal.insert(vJournal.end(), vObj.first.begin(), vObj.first.end());
                     
                 unsigned short nDataSize = vObj.second.size();
                 vJournal.push_back(nDataSize >> 8);
                 vJournal.push_back(nDataSize);
-                vJournal.insert(vJournal.end(), vObj.second.begin(), vOBj.second.end());
+                vJournal.insert(vJournal.end(), vObj.second.begin(), vObj.second.end());
             }
             
             /* Create txlog for Recovery. */
@@ -799,7 +799,7 @@ namespace LLD
             }
             
             /* Remove the Journal if Successful. */
-            std::remove(strFilename);
+            std::remove(strFilename.c_str());
             
             return true;
         }

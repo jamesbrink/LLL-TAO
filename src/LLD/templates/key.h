@@ -126,7 +126,6 @@ namespace LLD
         /* Check for Key Activity on Sector. */
         bool Empty() { return (nState == EMPTY); }
         bool Ready() { return (nState == READY); }
-        bool IsTxn() { return (nState == TRANSACTION); }
         
     };
 
@@ -493,7 +492,7 @@ namespace LLD
                         
                 
             /* Skip Empty Sectors for Now. (TODO: Expand to Reads / Writes) */
-            if(cKey.Ready() || cKey.IsTxn())
+            if(cKey.Ready())
             {
                 
                 /* Read the Key Data. */
