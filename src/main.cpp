@@ -141,7 +141,6 @@ int main(int argc, char** argv)
     for(typename std::map< uint1024, CBlock >::iterator blk = mapBlocks.begin(); blk != mapBlocks.end(); blk++ )
     {
         db->WriteBlock(blk->first, blk->second);
-        blk->second.Print();
     }
     
     unsigned int nElapsed = timer.ElapsedMicroseconds();
@@ -155,6 +154,7 @@ int main(int argc, char** argv)
     for(auto hash : vBlocks)
     {
         db->ReadBlock(hash, test);
+        //test.Print();
     }
     
     nElapsed = timer.ElapsedMicroseconds();

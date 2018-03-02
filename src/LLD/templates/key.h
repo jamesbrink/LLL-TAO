@@ -86,10 +86,7 @@ namespace LLD
             On startup ensure that the checksums match to ensure that the database was not stopped
             in the middle of a write. **/
         unsigned int nChecksum;
-        
-        /* Memory Only. */
-        unsigned int nBucket;
-        unsigned int nIterator;
+    
         
         /* Serialization Macro. */
         IMPLEMENT_SERIALIZE
@@ -103,7 +100,7 @@ namespace LLD
         )
         
         /* Constructors. */
-        SectorKey() : nState(0), nLength(0), nSectorFile(0), nSectorSize(0), nSectorStart(0), nBucket(0), nIterator(0) { }
+        SectorKey() : nState(0), nLength(0), nSectorFile(0), nSectorSize(0), nSectorStart(0) { }
         SectorKey(unsigned char nStateIn, std::vector<unsigned char> vKeyIn, unsigned short nSectorFileIn, unsigned int nSectorStartIn, unsigned short nSectorSizeIn) : nState(nStateIn), nSectorFile(nSectorFileIn), nSectorSize(nSectorSizeIn), nSectorStart(nSectorStartIn)
         { 
             nLength = vKeyIn.size();
@@ -222,7 +219,7 @@ namespace LLD
         
         /** Return Whether a Key Exists in the Database. **/
         bool Find(const std::vector<unsigned char> vKey, unsigned int& nBucket, unsigned int& nIterator) 
-        { 
+        {
             /* Write Header if First Update. */
             nBucket = GetBucket(vKey);
             
@@ -321,6 +318,7 @@ namespace LLD
                 
                 if(fMemoryCaching)
                 {
+                    
                     /* Get the Binary Size. */
                     fIncoming.ignore(std::numeric_limits<std::streamsize>::max());
                     unsigned int nCurrentFileSize = fIncoming.gcount();

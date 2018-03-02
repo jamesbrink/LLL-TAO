@@ -571,14 +571,14 @@ namespace LLD
                         
                         /* Check the Data Integrity of the Sector by comparing the Checksums. */
                         cKey.nChecksum    = LLC::HASH::SK32(vObj.second);
-                        cKey.nBucket      = nBucket;
-                        cKey.nIterator    = nIterator;
                         
                         /* Increment the current filesize */
                         nTempFileSize += vObj.second.size();
                         
                         /* Setup the Batch data write. */
                         vBatch.insert(vBatch.end(), vObj.second.begin(), vObj.second.end());
+                        
+                        SectorKeys->Put(cKey, nBucket, nIterator);
                         vBatchKeys.push_back(cKey);
                     }
                     else
@@ -610,15 +610,13 @@ namespace LLD
                         cKey.nState    = READY;
                         cKey.nChecksum = LLC::HASH::SK32(vObj.second);
                         
-                        cKey.nBucket   = nBucket;
-                        cKey.nIterator = nIterator;
-                        
+                        SectorKeys->Put(cKey, nBucket, nIterator);
                         vBatchKeys.push_back(cKey);
                     }
                 }
                 
                 /* Write the data in one operation. */
-                if(vBatch.size() > 100 || fDestruct)
+                if(vBatch.size() > 0 || fDestruct)
                 {
                     LOCK(SECTOR_MUTEX);
                     
@@ -637,10 +635,8 @@ namespace LLD
                     
                     /* Write all the keys after disk operations. */
                     for(auto key : vBatchKeys)
-                    {
-                        SectorKeys->Put(key, key.nBucket, key.nIterator);
                         CachePool->SetState(key.vKey, MEMORY_ONLY);
-                    }
+                    
                 }
             }
         }
@@ -770,9 +766,8 @@ namespace LLD
                     /* Update the Keychain. */
                     cKey.nState    = READY;
                     cKey.nChecksum = LLC::HASH::SK32(vObj.second);
-                    cKey.nBucket   = nBucket;
-                    cKey.nIterator = nIterator;
                     
+                    SectorKeys->Put(cKey, nBucket, nIterator);
                     vBatchKeys.push_back(cKey);
                 }
             }
@@ -796,10 +791,7 @@ namespace LLD
             
             /* Write the Keys to Disk and Update Memory Pool. */
             for(auto key : vBatchKeys)
-            {
-                SectorKeys->Put(key, key.nBucket, key.nIterator);
                 CachePool->SetState(key.vKey, MEMORY_ONLY);
-            }
             
             /* Remove the Journal if Successful. */
             std::remove(strFilename.c_str());
