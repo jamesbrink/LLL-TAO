@@ -1,47 +1,47 @@
-# Lower Level Library / TAO Framework
+# Building.
 
-Series of Templates for developing Crypto, Database, or Protocol. Base templates for the TAO framework, which will inhereit these templates and create higher level functionality. This TAO framework is the foundation to Nexus as an integrated series of core upgrades for a live blockchain to upgrade into a multi-dimensional chain. This is named the acronym TAO standing for Tritium, Amine, and Obsidian.
+```shell
+mkdir build
+cd build
+cmake ..
+make
+```
 
+### Running the benchmark
 
-## TAO Framework
+From the build directory.
 
-The core base upgrades utilizing the LLL as base templates for Tritium, Amine, and Obsidian feature sets.
+```shell
+./ldd_benchmark -testwrite=100000
 
-### Tritium
+Lower Level Library Initialization...
+[DATABASE] Checking File /Users/jbrink/Library/Application Support/LLL/keychain/testdb-0.keys
+[DATABASE] Keychain File 0 Loading [1717144 bytes]...
+[DATABASE] Checking File /Users/jbrink/Library/Application Support/LLL/keychain/testdb-1.keys
+[DATABASE] Keychain Initialized with 12008 Keys | Total Size 1717144 | Total Files 1 | Current Size 1717144
 
-The first of the three updates in the TAO Framework. Tritium will include the following feature sets:
+Writing 100000 Keys to Nexus LLD, Google LevelDB, and Oracle BerkeleyDB
 
-* Tritium Transactions / Signature Chains (Key Suites)
-* Advanced Contracts (Phase 1)
-* LISP Integration (Optional)
-* L1 Locking Groups (LISP IP Multicast)
-* Twin Blocks (No more Orphans)
+LLD Write Performance: 3628926 micro-seconds | 27556.362406 ops/s
+LLD Read Performance: 3762963 micro-seconds | 26574.802888 ops/s
+LLD Destruct Performance: 6918995 micro-seconds
+LLD Total Running Time: 14.310884 seconds | 6987.688531 ops/s
 
-### Amine
+LevelDB Write Performance: 2700816 micro-seconds | 37025.847003 ops/s
+LevelDB Read Performance: 5845320 micro-seconds | 17107.703257 ops/s
+LevelDB Destruct Performance: 1848 micro-seconds
+LevelDB Total Running Time: 8.547984 seconds | 11698.664855 ops/s
 
-The second of the three updates in the TAO Framework. Amine will include the following feature sets:
+BerkeleyDB Write Performance: 1856509 micro-seconds | 53864.538227 ops/s
+BerkeleyDB Read Performance: 1288131 micro-seconds | 77631.855766 ops/s
+BerkeleyDB Destruct Performance: 178382 micro-seconds
+BerkeleyDB Total Running Time: 3.323022 seconds | 30093.089964 ops/s
+```
 
-* L1 Ledger Sharding Channels
-* L2 Ledger Sharding Groups
-* Advanced Contracts (Phase 2)
-* IP Multicast Groups over LISP (L1, L2, and L3)
-* L1 and L2 Trust Locking and Reputation
+# Lower Level Library
 
-### Obsidian
+Series of Templates for developing Crypto, Database, or Protocol. Base templates for the TAO framework, which will inhereit these templates and create higher level functionality such as Tritium, Amine, and Obsidian for Nexus. This framework is the foundation to Nexus and a 3DC. 
 
-The third of the three updates in the TAO Framework. Obsidian will include the following feature sets:
-
-* L3 Ledger Sharding Cubes
-* L3 Distributed Mining Pool
-* L3 Trust Locking and Reputation
-* Distributed Autonomous Community
-* Ambassador / Developer Contracts (Validated on Ledger)
-* Advanced Contracts (Phase 3)
-
-
-## Lower Level Library
-
-Following will include descriptions of the core components of the Lower Level Library. These base templates lay the foundation for any higher inheritance as a series of base classes for Crypto, Database, and Protocol.
 
 ### Lower Level Crypto
 
@@ -110,4 +110,4 @@ These core templates can be expanded in any way by inheriting the base templates
 
 
 ## Why?
-A lot of software that we use today for databases, or protocols, or cyrptography was created back in the 1990's as open source software. Since then the industry has expanded and bloated this code causing performance degragation. The aim of these templates is performance in simplicity. Include only what is needed, no more, and no less. This allows extremely high performance and scaleability necessary for the new distributed systems that will continue to evolve over the next few decades.
+Because a lot of software that we use today for databases, or protocols, or cyrptography was created back in the 1990's as open source software. Since then the industry has expanded and bloated this code causing performance degragation. The aim of these templates is performance in simplicity. Include only what is needed, no more, and no less. This allows extremely high performance and scaleability necessary for the new distributed systems that will continue to evolve over the next few decades.
