@@ -353,7 +353,7 @@ int main(int argc, char** argv)
     
     
     int nDbCache = GetArg("-dbcache", 25);
-    DbEnv dbenv(0);
+    DbEnv dbenv(int(0));
     dbenv.set_cachesize(nDbCache / 1024, (nDbCache % 1024)*1048576, 1);
     dbenv.set_lg_bsize(1048576);
     dbenv.set_lg_max(10485760);
