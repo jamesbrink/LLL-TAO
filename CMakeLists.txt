@@ -4,11 +4,12 @@ cmake_minimum_required(VERSION 3.6)
 
 project(LLL-TAO)
 set(CMAKE_CXX_STANDARD 11)
-set(OPENSSL_ROOT_DIR /usr/local/opt/openssl)
+set(OPENSSL_ROOT_DIR ./openssl)
 if (APPLE)
         add_definitions(-DMAC_OSX -DBOOST_NO_CXX11_SCOPED_ENUMS  -DMSG_NOSIGNAL=0 -DBOOST_SPIRIT_THREADSAFE)
 else()
         add_definitions(-DUSE_LDD -DBOOST_SPIRIT_THREADSAFE -DHAVE_BUILD_INFO)
+        find_package (Threads)
 endif()
 
 find_package(BerkeleyDB REQUIRED)
@@ -89,8 +90,18 @@ add_executable(ldd_benchmark ./src/main.cpp
         ${TAOSources}
         ${UtilSources})
 
+if (APPLE)
 target_link_libraries(ldd_benchmark
         LINK_PUBLIC ${Boost_LIBRARIES}
         LINK_PUBLIC ${OPENSSL_LIBRARIES}
         LINK_PUBLIC ${BERKELEY_DB_LIBRARIES}
         LINK_PUBLIC ${LevelDB_LIBRARY})
+else()
+target_link_libraries(ldd_benchmark
+        LINK_PUBLIC ${Boost_LIBRARIES}
+        LINK_PUBLIC ${OPENSSL_LIBRARIES}
+        LINK_PUBLIC ${BERKELEY_DB_LIBRARIES}
+        LINK_PUBLIC ${LevelDB_LIBRARY}
+        LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT}
+        LINK_PUBLIC ${CMAKE_DL_LIBS})
+endif()
