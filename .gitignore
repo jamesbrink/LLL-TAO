@@ -10,5 +10,6 @@
 *.vscode
 *.qm
 *.log
+openssl*
 LLL
 build
